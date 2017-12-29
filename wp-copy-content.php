@@ -1,7 +1,7 @@
 <?php
 /*
 Plugin Name: Copy Content
-Plugin URI: https://github.com/halftheory
+Plugin URI: https://github.com/halftheory/wp-copy-content
 Description: Copy Content
 Author: Half/theory
 Author URI: https://github.com/halftheory
