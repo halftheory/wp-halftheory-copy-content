@@ -1,4 +1,4 @@
-# wp-copy-content
+# wp-halftheory-copy-content
 Wordpress plugin for shortcode [copy-content].
 
 This plugin allows editors to target and copy content from any webpage.
@@ -34,13 +34,9 @@ Features:
 # Custom filters
 
 The following filters are available for plugin/theme customization:
-- copy_content_db_prefix
-- copy_content_allowable_tags
-- copy_content_before_update_db
-- copy_content_wrap_output
-- copy_content_plugin_deactivation
-- copy_content_plugin_uninstall
-
-# Disclaimer
-
-Note: This plugin has no relation to this https://wordpress.org/plugins/wp-copy-content/
+- copycontent_db_prefix
+- copycontent_allowable_tags
+- copycontent_before_update_db
+- copycontent_wrap_output
+- copycontent_deactivation
+- copycontent_uninstall

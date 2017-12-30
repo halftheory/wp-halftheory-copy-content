@@ -1,7 +1,7 @@
 <?php
 /*
 Plugin Name: Copy Content
-Plugin URI: https://github.com/halftheory/wp-copy-content
+Plugin URI: https://github.com/halftheory/wp-halftheory-copy-content
 Description: Copy Content
 Author: Half/theory
 Author URI: https://github.com/halftheory
@@ -11,8 +11,8 @@ Network: false
 
 /*
 Available filters:
-copy_content_plugin_deactivation(string $db_prefix)
-copy_content_plugin_uninstall(string $db_prefix)
+copycontent_deactivation(string $db_prefix)
+copycontent_uninstall(string $db_prefix)
 */
 
 // Exit if accessed directly.
@@ -45,7 +45,7 @@ class Copy_Content_Plugin {
 		else {
 			$wpdb->query("DELETE FROM $wpdb->options WHERE option_name LIKE '_transient_".$plugin->subclass->prefix."%' OR option_name LIKE '_transient_timeout_".$plugin->subclass->prefix."%'");
 		}
-		apply_filters('copy_content_plugin_deactivation', $plugin->subclass->prefix);
+		apply_filters('copycontent_deactivation', $plugin->subclass->prefix);
 		return;
 	}
 
@@ -57,7 +57,7 @@ class Copy_Content_Plugin {
 		else {
 			delete_option($plugin->subclass->prefix);
 		}
-		apply_filters('copy_content_plugin_uninstall', $plugin->subclass->prefix);
+		apply_filters('copycontent_uninstall', $plugin->subclass->prefix);
 		return;
 	}
 

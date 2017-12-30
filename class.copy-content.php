@@ -1,10 +1,10 @@
 <?php
 /*
 Available filters:
-copy_content_db_prefix(string $db_prefix)
-copy_content_allowable_tags(array $allowable_tags)
-copy_content_before_update_db(string $output, array $atts, string $hash)
-copy_content_wrap_output(string $output, array $atts, string $shortcode)
+copycontent_db_prefix(string $db_prefix)
+copycontent_allowable_tags(array $allowable_tags)
+copycontent_before_update_db(string $output, array $atts, string $hash)
+copycontent_wrap_output(string $output, array $atts, string $shortcode)
 */
 
 // Exit if accessed directly.
@@ -14,16 +14,21 @@ if (!class_exists('Copy_Content')) :
 class Copy_Content {
 
 	public function __construct() {
+		$this->plugin_name = get_called_class();
+		$this->plugin_title = ucwords(str_replace('_', ' ', $this->plugin_name));
+		$this->prefix = sanitize_key($this->plugin_name);
+		$this->prefix = preg_replace("/[^a-z0-9]/", "", $this->prefix);
+		$this->prefix = apply_filters('copycontent_db_prefix', $this->prefix);
+
 		$this->shortcode = 'copy-content';
 		add_shortcode($this->shortcode, array($this, 'shortcode'));
 		$this->domwrapper = 'domwrapper';
-		$this->prefix = apply_filters('copy_content_db_prefix', $this->shortcode);
 
 		// TODO: add admin page to select file downloading options
 		// just testing
 		if (strpos($_SERVER['HTTP_HOST'], 'localhost') !== false) {
-			add_filter('copy_content_before_update_db', array($this, 'copy_content_before_update_db'), 10, 3);
-			add_filter('copy_content_plugin_deactivation', array($this, 'copy_content_plugin_deactivation'));
+			add_filter('copycontent_before_update_db', array($this, 'copycontent_before_update_db'), 10, 3);
+			add_filter('copycontent_deactivation', array($this, 'copycontent_deactivation'));
 		}
 	}
 
@@ -262,7 +267,7 @@ class Copy_Content {
 			'ul' => '',
 			'video' => '*',
 		);
-		return apply_filters('copy_content_allowable_tags', $arr);
+		return apply_filters('copycontent_allowable_tags', $arr);
 	}
 
 	private function relative_links_absolute($str, $url) {
@@ -399,7 +404,7 @@ class Copy_Content {
 			}
 
 			// one might use this filter to download files and change links, see below
-			$str = apply_filters('copy_content_before_update_db', $str, $atts, $hash);
+			$str = apply_filters('copycontent_before_update_db', $str, $atts, $hash);
 
 			if ($this->set_transient($this->prefix.'_'.$hash.'_'.$i, $str, $atts['refresh'])) {
 				unset($atts['force-refresh']); // avoid storing in db
@@ -413,7 +418,7 @@ class Copy_Content {
 		$str = '<div class="'.$this->shortcode.'">
 		<div class="'.$this->shortcode.'-header"><small>From <a href="'.esc_url($atts['url']).'">'.parse_url($atts['url'], PHP_URL_HOST).'</a></small></div>
 		<div class="'.$this->shortcode.'-content">'.$str.'</div></div>';
-		return apply_filters('copy_content_wrap_output', $str, $atts, $this->shortcode);
+		return apply_filters('copycontent_wrap_output', $str, $atts, $this->shortcode);
 	}
 	private function update_and_output($str = '', $str_fallback = '', $atts, $option = array(), $hash) {
 		$str = $this->update_db($str, $str_fallback, $atts, $option, $hash);
@@ -819,7 +824,7 @@ class Copy_Content {
 	/* filters */
 
 	// download files and change links
-	public function copy_content_before_update_db($str, $atts, $hash) {
+	public function copycontent_before_update_db($str, $atts, $hash) {
 		// just testing
 		if (strpos($_SERVER['HTTP_HOST'], 'localhost') === false) {
 			return $str;
@@ -897,7 +902,7 @@ class Copy_Content {
 	}
 
 	// delete files
-	public function copy_content_plugin_deactivation($prefix) {
+	public function copycontent_deactivation($prefix) {
 		// just testing
 		if (strpos($_SERVER['HTTP_HOST'], 'localhost') === false) {
 			return;
