@@ -431,6 +431,9 @@ class Copy_Content {
 	/* shortcode */
 
 	public function shortcode($atts = array(), $content = '', $shortcode = '') {
+		if (!in_the_loop()) {
+			return '';
+		}
 		$defaults = array(
 			'url' => '',
 			'include' => 'body',
