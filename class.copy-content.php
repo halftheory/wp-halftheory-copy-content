@@ -368,9 +368,11 @@ class Copy_Content {
 			}
 		}
 		if (is_multisite()) {
+			$transient = substr($transient, 0, 167);
 			$bool = set_site_transient($transient, $value, $expiration);
 		}
 		else {
+			$transient = substr($transient, 0, 172);
 			$bool = set_transient($transient, $value, $expiration);
 		}
 		return $bool;
