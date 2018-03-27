@@ -2,6 +2,7 @@
 /*
 Plugin Name: Copy Content
 Plugin URI: https://github.com/halftheory/wp-halftheory-copy-content
+GitHub Plugin URI: https://github.com/halftheory/wp-halftheory-copy-content
 Description: Copy Content
 Author: Half/theory
 Author URI: https://github.com/halftheory
