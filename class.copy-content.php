@@ -140,30 +140,35 @@ class Copy_Content {
 		}
 		$str = '';
 		// use user_agent when available
-		$user_agent = false;
-		if (isset($_SERVER["HTTP_USER_AGENT"])) {
+		$user_agent = $this->plugin_title;
+		if (isset($_SERVER["HTTP_USER_AGENT"]) && !empty($_SERVER["HTTP_USER_AGENT"])) {
 			$user_agent = $_SERVER["HTTP_USER_AGENT"];
 		}
 		// try php
-		if ($user_agent) {
-			$options = array('http' => array('user_agent' => $user_agent));
-			$context = stream_context_create($options);
-			$str = file_get_contents($url, false, $context);
-		}
-		else {
-			$str = file_get_contents($url);
-		}
+		$options = array('http' => array('user_agent' => $user_agent));
+		$context = stream_context_create($options);
+		$str = @file_get_contents($url, false, $context);
 		// try curl
 		if ($str === false || (is_string($str) && trim($str) == '')) {
 			if (function_exists('curl_init')) {
-				$curl = @curl_init();
-				curl_setopt($curl, CURLOPT_RETURNTRANSFER, 1);
-				if ($user_agent) {
-	  				curl_setopt($curl, CURLOPT_USERAGENT, $user_agent);
-	  			}
-				curl_setopt($curl, CURLOPT_URL, $url);
-				$str = curl_exec($curl);
-				curl_close($curl);
+		        $c = @curl_init();
+		        // try 'correct' way
+		        curl_setopt($c, CURLOPT_URL, $url);
+		        curl_setopt($c, CURLOPT_RETURNTRANSFER, true);
+  				curl_setopt($c, CURLOPT_USERAGENT, $user_agent);
+		        curl_setopt($c, CURLOPT_FOLLOWLOCATION, true);
+		        curl_setopt($c, CURLOPT_MAXREDIRS, 10);
+		        $str = curl_exec($c);
+		        // try 'insecure' way
+		        if (empty($str)) {
+		            curl_setopt($c, CURLOPT_URL, $url);
+		            curl_setopt($c, CURLOPT_RETURNTRANSFER, true);
+	  				curl_setopt($c, CURLOPT_USERAGENT, $user_agent);
+		            curl_setopt($c, CURLOPT_SSL_VERIFYPEER, false);
+		            curl_setopt($c, CURLOPT_SSL_VERIFYHOST, 0);
+		            $str = curl_exec($c);
+		        }
+		        curl_close($c);
 			}
 		}
 		if ($str === false || (is_string($str) && trim($str) == '')) {
