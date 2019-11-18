@@ -1,30 +1,32 @@
 <?php
 /*
-Plugin Name: Copy Content
+Plugin Name: Half/theory Copy Content
 Plugin URI: https://github.com/halftheory/wp-halftheory-copy-content
 GitHub Plugin URI: https://github.com/halftheory/wp-halftheory-copy-content
 Description: Copy Content
 Author: Half/theory
 Author URI: https://github.com/halftheory
-Version: 1.0
+Version: 2.0
 Network: false
 */
 
 /*
 Available filters:
-copycontent_deactivation(string $db_prefix)
-copycontent_uninstall(string $db_prefix)
+copycontent_deactivation(string $db_prefix, class $subclass)
+copycontent_uninstall(string $db_prefix, class $subclass)
 */
 
 // Exit if accessed directly.
 defined('ABSPATH') || exit;
 
 if (!class_exists('Copy_Content_Plugin')) :
-class Copy_Content_Plugin {
+final class Copy_Content_Plugin {
 
 	public function __construct() {
-		@include_once(dirname(__FILE__).'/class.copy-content.php');
-		$this->subclass = new Copy_Content();
+		@include_once(dirname(__FILE__).'/class-copy-content.php');
+		if (class_exists('Copy_Content')) {
+			$this->subclass = new Copy_Content(plugin_basename(__FILE__), '', true);
+		}
 	}
 
 	public static function init() {
@@ -39,26 +41,19 @@ class Copy_Content_Plugin {
 
 	public static function deactivation() {
 		$plugin = new self;
-		global $wpdb;
-		if (is_multisite()) {
-			$wpdb->query("DELETE FROM $wpdb->sitemeta WHERE meta_key LIKE '_site_transient_".$plugin->subclass->prefix."%' OR meta_key LIKE '_site_transient_timeout_".$plugin->subclass->prefix."%'");
+		if ($plugin->subclass) {
+			apply_filters('copycontent_deactivation', $plugin->subclass::$prefix, $plugin->subclass);
 		}
-		else {
-			$wpdb->query("DELETE FROM $wpdb->options WHERE option_name LIKE '_transient_".$plugin->subclass->prefix."%' OR option_name LIKE '_transient_timeout_".$plugin->subclass->prefix."%'");
-		}
-		apply_filters('copycontent_deactivation', $plugin->subclass->prefix);
 		return;
 	}
 
 	public static function uninstall() {
 		$plugin = new self;
-		if (is_multisite()) {
-			delete_site_option($plugin->subclass->prefix);
+		if ($plugin->subclass) {
+			$plugin->subclass->delete_transient_uninstall();
+			$plugin->subclass->delete_option_uninstall();
+			apply_filters('copycontent_uninstall', $plugin->subclass::$prefix, $plugin->subclass);
 		}
-		else {
-			delete_option($plugin->subclass->prefix);
-		}
-		apply_filters('copycontent_uninstall', $plugin->subclass->prefix);
 		return;
 	}
 

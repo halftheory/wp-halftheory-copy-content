@@ -1,27 +1,32 @@
 # wp-halftheory-copy-content
-Wordpress plugin for shortcode [copy-content].
+Wordpress plugin for shortcodes [copy-content] and [wp-copy-content].
 
-This plugin allows editors to target and copy content from any webpage.
+This plugin allows editors to target and copy content from any external webpage or internal post.
 
 Features:
 - Copies HTML from any URL and then filters it via 'include' and 'exclude' tag selectors.
 - Target specific parts of the HTML DOM (based on PHP's DOM/XPath).
 - Target HTML comments.
 - Include any tag/attribute combination as a shortcode argument.
-- Stores filtered HTML in a database transient, allowing you to automatically 'refresh' the content at any time.
+- Allows you to automatically 'refresh' the content at any time.
+- Automatically copy the excerpt and thumbnail into the current post.
+- Set default parameters for each shortcode.
+- Many file handling options (Keep original links, Remove from content, Download files).
+- Copies the filtered HTML into the post content box (for further editing) or stores it in a database transient.
 
-# Shortcode arguments
+# [copy-content] arguments
 
-[copy-content (arguments)]
 - url (http://...)
 - include (list of tag selectors)
 - exclude (list of tag selectors)
-- raw (true/false)
 - refresh (int seconds "86400" or string "1 day")
+- update_excerpt (true/false)
+- update_thumbnail (true/false)
+- force-update (true/false)
 - force-refresh (true/false)
 - any HTML/XML tag (true/false or a list of attributes)
 
-# Shortcode examples
+# [copy-content] examples
 
 [copy-content url=http://wikipedia.org/ include=.central-textlogo,div.central-featured exclude=div.central-featured-logo-wrapper force-refresh=true]
 
@@ -31,12 +36,38 @@ Features:
 
 [copy-content url=https://www.residentadvisor.net/events/962231 include=#event-item exclude=.ptb8]
 
+# [wp-copy-content] arguments
+
+- blog_id (multisite)
+- include (list of tag selectors)
+- exclude (list of tag selectors)
+- refresh (int seconds "86400" or string "1 day")
+- update_excerpt (true/false)
+- update_thumbnail (true/false)
+- force-update (true/false)
+- force-refresh (true/false)
+- any WP_Query argument (posts, taxonomies, search, etc.)
+
+# [wp-copy-content] examples
+
+[wp-copy-content p=5]
+
+[wp-copy-content name=parent/slug]
+
+[wp-copy-content category_name=news]
+
+[wp-copy-content blog_id=3 category_name=news paged=2 update_thumbnail=0]
+
 # Custom filters
 
 The following filters are available for plugin/theme customization:
-- copycontent_db_prefix
-- copycontent_allowable_tags
-- copycontent_before_update_db
-- copycontent_wrap_output
+- halftheory_admin_menu_parent
+- copycontent_admin_menu_parent
 - copycontent_deactivation
 - copycontent_uninstall
+- copycontent_file_types
+- copycontent_shortcode
+- copycontent_get_content
+- wpcopycontent_get_content
+- wpcopycontent_query
+- wpcopycontent_template
