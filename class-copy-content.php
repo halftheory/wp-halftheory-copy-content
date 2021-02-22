@@ -2,6 +2,9 @@
 /*
 Available filters:
 copycontent_file_types
+copycontent_is_valid_file
+copycontent_register_post_type
+copycontent_register_taxonomy
 copycontent_shortcode
 copycontent_get_content
 wpcopycontent_get_content
@@ -33,11 +36,25 @@ final class Copy_Content extends Halftheory_Helper_Plugin {
 
 	public function init($plugin_basename = '', $prefix = '') {
 		parent::init($plugin_basename, $prefix);
+		$this->plugin_description = __('Created by plugin: ').$this->plugin_title;
 		self::$active = $this->get_option(static::$prefix, 'active', false);
 		$this->option_prefix = array(
 			$this->shortcode_copycontent => 'copycontent',
 			$this->shortcode_wpcopycontent => 'wpcopycontent',
 		);
+		// only on our menu_page
+		if ($this->is_menu_page()) {
+			$this->menu_page_tabs = array(
+				'' => array(
+					'name' => __('Settings'),
+					'callback' => 'menu_page',
+				),
+				'transient' => array(
+					'name' => __('Input HTML'),
+					'callback' => 'menu_page_transient',
+				),
+			);
+		}
 	}
 
 	protected function setup_actions() {
@@ -53,28 +70,45 @@ final class Copy_Content extends Halftheory_Helper_Plugin {
 			add_action('post_updated', array($this,'post_updated'), 20, 3);
 			add_action('admin_notices', array($this,'admin_notices'));
 		}
+		// public
+		else {
+			add_filter('the_content', array($this,'the_content'), 20);
+		}
 
 		// shortcodes
 		if (!shortcode_exists($this->shortcode_copycontent)) {
 			add_shortcode($this->shortcode_copycontent, array($this,'shortcode'));
+			$this->add_shortcode_wpautop_control($this->shortcode_copycontent, 'the_content');
 		}
 		if (!shortcode_exists($this->shortcode_wpcopycontent)) {
 			add_shortcode($this->shortcode_wpcopycontent, array($this,'shortcode'));
+			$this->add_shortcode_wpautop_control($this->shortcode_wpcopycontent, 'the_content');
 		}
 	}
 
 	/* admin */
 
 	public function menu_page() {
+ 		$plugin = new static(static::$plugin_basename, static::$prefix, false);
+
+		// redirect to tab functions
+		if ($plugin->load_menu_page_tab()) {
+			return;
+		}
+
  		global $title;
 		?>
 		<div class="wrap">
-			<h2><?php echo $title; ?></h2>
+		<h2><?php echo $title; ?></h2>
+		
 		<?php
- 		$plugin = new static(static::$plugin_basename, static::$prefix, false);
-
-		if ($plugin->save_menu_page()) {
+		if ($plugin->save_menu_page(__FUNCTION__)) {
         	$save = function() use ($plugin) {
+	        	// text fields
+	        	$text_fields = array(
+					'copycontent_shortcode_defaults',
+					'wpcopycontent_shortcode_defaults',
+	        	);
 				// get values
 				$options_arr = $plugin->get_options_array();
 				$options = array();
@@ -85,6 +119,9 @@ final class Copy_Content extends Halftheory_Helper_Plugin {
 					}
 					if ($this->empty_notzero($_POST[$name])) {
 						continue;
+					}
+					if (in_array($value, $text_fields)) {
+						$_POST[$name] = trim(stripslashes($_POST[$name]));
 					}
 					$options[$value] = $_POST[$name];
 				}
@@ -125,6 +162,9 @@ final class Copy_Content extends Halftheory_Helper_Plugin {
 		$options = $plugin->get_option($plugin::$prefix, null, array());
 		$options = array_merge( array_fill_keys($options_arr, null), $options );
 		?>
+
+		<?php $plugin->print_menu_page_tabs(); ?>
+
 	    <form id="<?php echo $plugin::$prefix; ?>-admin-form" name="<?php echo $plugin::$prefix; ?>-admin-form" method="post" action="<?php echo $_SERVER['REQUEST_URI']; ?>">
 		<?php
 		// Use nonce for verification
@@ -144,11 +184,13 @@ final class Copy_Content extends Halftheory_Helper_Plugin {
 
 		        <p><label for="<?php echo $plugin::$prefix; ?>_copycontent_update_thumbnail"><input type="checkbox" id="<?php echo $plugin::$prefix; ?>_copycontent_update_thumbnail" name="<?php echo $plugin::$prefix; ?>_copycontent_update_thumbnail" value="1"<?php checked($options['copycontent_update_thumbnail'], 1); ?> /> <?php _e('Update my post <strong>thumbnail</strong> where possible.'); ?></label></p>
 
+		        <p><label for="<?php echo $plugin::$prefix; ?>_copycontent_update_post_frontend"><input type="checkbox" id="<?php echo $plugin::$prefix; ?>_copycontent_update_post_frontend" name="<?php echo $plugin::$prefix; ?>_copycontent_update_post_frontend" value="1"<?php checked($options['copycontent_update_post_frontend'], 1); ?> /> <?php _e('Update post content when the shortcode executes on the <strong>front end</strong>.'); ?></label></p>
+
 	            <label for="<?php echo $plugin::$prefix; ?>_copycontent_shortcode_defaults">
 	            	<h4><?php _e('Shortcode Defaults'); ?></h4>
 	            	<?php
 	            	$placeholder = '';
-	            	$arr = array_filter($plugin->get_shortcode_defaults($plugin->shortcode_copycontent));
+	            	$arr = array_filter($plugin->get_shortcode_defaults($plugin->shortcode_copycontent), function($v) use ($plugin) { return !$plugin->empty_notzero($v); });
 	            	foreach ($arr as $key => $value) {
 	            		$placeholder .= "$key=$value ";
 	            	}
@@ -165,7 +207,7 @@ final class Copy_Content extends Halftheory_Helper_Plugin {
 	            	</tr>
 	            <?php
 	            $options['copycontent_file_handling'] = $plugin->make_array($options['copycontent_file_handling']);
-	            foreach ($plugin->get_file_types() as $file_key => $file_type) {
+	            foreach ($plugin::get_file_types() as $file_key => $file_type) {
 	            	if (!isset($options['copycontent_file_handling'][$file_key])) {
 	            		$options['copycontent_file_handling'][$file_key] = '';
 	            	}
@@ -206,11 +248,13 @@ final class Copy_Content extends Halftheory_Helper_Plugin {
 
 		        <p><label for="<?php echo $plugin::$prefix; ?>_wpcopycontent_update_thumbnail"><input type="checkbox" id="<?php echo $plugin::$prefix; ?>_wpcopycontent_update_thumbnail" name="<?php echo $plugin::$prefix; ?>_wpcopycontent_update_thumbnail" value="1"<?php checked($options['wpcopycontent_update_thumbnail'], 1); ?> /> <?php _e('Update my post <strong>thumbnail</strong> where possible.'); ?></label></p>
 
+		        <p><label for="<?php echo $plugin::$prefix; ?>_wpcopycontent_update_post_frontend"><input type="checkbox" id="<?php echo $plugin::$prefix; ?>_wpcopycontent_update_post_frontend" name="<?php echo $plugin::$prefix; ?>_wpcopycontent_update_post_frontend" value="1"<?php checked($options['wpcopycontent_update_post_frontend'], 1); ?> /> <?php _e('Update post content when the shortcode executes on the <strong>front end</strong>.'); ?></label></p>
+
 	            <label for="<?php echo $plugin::$prefix; ?>_wpcopycontent_shortcode_defaults">
 	            	<h4><?php _e('Shortcode Defaults'); ?></h4>
 	            	<?php
 	            	$placeholder = '';
-	            	$arr = array_filter($plugin->get_shortcode_defaults($plugin->shortcode_wpcopycontent));
+	            	$arr = array_filter($plugin->get_shortcode_defaults($plugin->shortcode_wpcopycontent), function($v) use ($plugin) { return !$plugin->empty_notzero($v); });
 	            	foreach ($arr as $key => $value) {
 	            		$placeholder .= "$key=$value ";
 	            	}
@@ -227,7 +271,7 @@ final class Copy_Content extends Halftheory_Helper_Plugin {
 	            	</tr>
 	            <?php
 	            $options['wpcopycontent_file_handling'] = $plugin->make_array($options['wpcopycontent_file_handling']);
-	            foreach ($plugin->get_file_types() as $file_key => $file_type) {
+	            foreach ($plugin::get_file_types() as $file_key => $file_type) {
 	            	if (!isset($options['wpcopycontent_file_handling'][$file_key])) {
 	            		$options['wpcopycontent_file_handling'][$file_key] = '';
 	            	}
@@ -267,15 +311,125 @@ final class Copy_Content extends Halftheory_Helper_Plugin {
 		<?php
 	}
 
+	public function menu_page_transient($plugin) {
+ 		global $title;
+		?>
+		<div class="wrap">
+		<h2><?php echo $title; ?></h2>
+
+		<?php
+		if ($plugin->save_menu_page(__FUNCTION__)) {
+        	$save = function() use ($plugin) {
+				// get values
+				$options_arr = array(
+					'url',
+					'content',
+					'refresh_time',
+				);
+				$atts = array();
+				foreach ($options_arr as $value) {
+					$name = $plugin::$prefix.'_'.$value;
+					if (!isset($_POST[$name])) {
+						continue;
+					}
+					$_POST[$name] = trim(stripslashes($_POST[$name]));
+					if ($this->empty_notzero($_POST[$name])) {
+						continue;
+					}
+					$atts[$value] = $_POST[$name];
+				}
+	            $updated = '<div class="updated"><p><strong>'.esc_html__('HTML contents saved.').'</strong></p></div>';
+	            $error = '<div class="error"><p><strong>'.esc_html__('Error: There was a problem.').'</strong></p></div>';
+	            if (!isset($atts['url'])) {
+	            	echo $error;
+	            	return;
+	            }
+	            if (!isset($atts['content'])) {
+	            	echo $error;
+	            	return;
+	            }
+	            if (!isset($atts['refresh_time'])) {
+					$atts['refresh_time'] = 0;
+	            }
+				$transient_name = $plugin::$prefix.'_'.hash('adler32', untrailingslashit($atts['url']));
+				$plugin->delete_transient($transient_name);
+				if ($plugin->set_transient_html($transient_name, $atts['content'], $atts['refresh_time'])) {
+					echo $updated;
+				}
+				else {
+					echo $error;
+				}
+			};
+			$save();
+		} // save
+ 		?>
+
+		<?php $plugin->print_menu_page_tabs(); ?>
+
+	    <form id="<?php echo $plugin::$prefix; ?>-admin-form" name="<?php echo $plugin::$prefix; ?>-admin-form" method="post" action="<?php echo $_SERVER['REQUEST_URI']; ?>">
+		<?php
+		// Use nonce for verification
+		wp_nonce_field($plugin::$plugin_basename, $plugin->plugin_name.'::'.__FUNCTION__);
+		?>
+	    <div id="poststuff">
+
+		<h3><?php _e('Input HTML for a URL'); ?></h3>
+        <p><?php _e('Use this form to manually update the local record (transient) of the HTML contents for an external URL. This can be useful in certain cases: when the plugin cannot reach the URL; when a login is required; when javascript changes the DOM; etc.'); ?></p>
+
+        <div class="postbox">
+        	<div class="inside">
+
+	            <label for="<?php echo $plugin::$prefix; ?>_url">
+	            	<h4><?php _e('External URL'); ?></h4>
+	            	<?php
+	            	$val = (isset($_POST[$plugin::$prefix.'_url']) ? $_POST[$plugin::$prefix.'_url'] : '');
+	            	?>
+					<input type="text" id="<?php echo $plugin::$prefix; ?>_url" name="<?php echo $plugin::$prefix; ?>_url" value="<?php echo esc_attr($val); ?>" style="min-width: 20em; width: 50%;" />
+				</label>
+
+	            <label for="<?php echo $plugin::$prefix; ?>_content">
+	            	<h4><?php _e('HTML contents'); ?></h4>
+	            	<?php
+	            	$val = (isset($_POST[$plugin::$prefix.'_content']) ? $_POST[$plugin::$prefix.'_content'] : '');
+	            	?>
+					<textarea id="<?php echo $plugin::$prefix; ?>_content" name="<?php echo $plugin::$prefix; ?>_content" style="min-width: 20em; width: 50%; min-height: 20em;"><?php echo esc_textarea($val); ?></textarea>
+				</label>
+
+	            <label for="<?php echo $plugin::$prefix; ?>_refresh_time">
+	            	<h4><?php _e('Expiration'); ?></h4>
+	            	<?php
+	            	$val = (isset($_POST[$plugin::$prefix.'_refresh_time']) ? $_POST[$plugin::$prefix.'_refresh_time'] : '');
+	            	?>
+					<input type="text" id="<?php echo $plugin::$prefix; ?>_refresh_time" name="<?php echo $plugin::$prefix; ?>_refresh_time" value="<?php echo esc_attr($val); ?>" style="min-width: 10em; width: 10%;" />
+				</label>
+
+
+			</div>
+		</div>
+
+        <?php submit_button(__('Update'), array('primary','large'), 'save'); ?>
+
+        </div><!-- poststuff -->
+    	</form>
+
+ 		</div><!-- wrap -->
+ 		<?php
+ 	}
+
 	public function post_updated($post_id, $post_after, $post_before) {
 		if (defined('DOING_AUTOSAVE') && DOING_AUTOSAVE) {
+			return;
+		}
+		if (wp_is_post_revision($post_id)) {
 			return;
 		}
     	// update only on Edit>Post page
 		if (isset($_POST)) {
 			if (isset($_POST['_wpnonce'])) {
 				if (wp_verify_nonce($_POST['_wpnonce'], 'update-post_'.$post_id)) {
-					if (trim($post_before->post_content) != trim($post_after->post_content) || strpos($post_after->post_content, 'force-update') !== false || strpos($post_after->post_content, 'force-refresh') !== false) {
+					if (trim($post_before->post_content) != trim($post_after->post_content) || strpos($post_after->post_content, 'force_refresh') !== false) {
+						remove_action(current_action(), array($this,__FUNCTION__), 20);
+
 						$messages = array();
 
 						if (has_shortcode($post_after->post_content, $this->shortcode_copycontent)) {
@@ -283,8 +437,8 @@ final class Copy_Content extends Halftheory_Helper_Plugin {
 								if (!empty($matches[0])) {
 									foreach ($matches[0] as $key => $match) {
 										$atts = $this->get_shortcode_atts($matches[3][$key], $this->shortcode_copycontent);
-										if (!isset($atts['force-update']) && !isset($atts['force-refresh'])) {
-											$atts['force-update'] = true;
+										if (!isset($atts['force_refresh'])) {
+											$atts['force_refresh'] = true;
 										}
 										$content = $matches[5][$key];
 										$res = self::copycontent_get_content($atts, $content, $post_id, array('get_shortcode_atts' => false));
@@ -313,8 +467,8 @@ final class Copy_Content extends Halftheory_Helper_Plugin {
 								if (!empty($matches[0])) {
 									foreach ($matches[0] as $key => $match) {
 										$atts = $this->get_shortcode_atts($matches[3][$key], $this->shortcode_wpcopycontent);
-										if (!isset($atts['force-update']) && !isset($atts['force-refresh'])) {
-											$atts['force-update'] = true;
+										if (!isset($atts['force_refresh'])) {
+											$atts['force_refresh'] = true;
 										}
 										$content = $matches[5][$key];
 										$res = self::wpcopycontent_get_content($atts, $content, $post_id, array('get_shortcode_atts' => false));
@@ -342,6 +496,7 @@ final class Copy_Content extends Halftheory_Helper_Plugin {
 						if (!empty($messages)) {
 							$this->set_transient(static::$prefix.'_admin_notices', $messages, '1 day');
 						}
+						add_action(current_action(), array($this,__FUNCTION__), 20, 3);
 					}
 				}
 			}
@@ -367,6 +522,16 @@ final class Copy_Content extends Halftheory_Helper_Plugin {
 		}
 	}
 
+	/* public */
+
+	public function the_content($value = '') {
+		$str = trim(strip_tags($value));
+		if (strpos($str, $this->plugin_description) === 0) {
+			return '';
+		}
+		return $value;
+	}
+
 	/* shortcodes */
 
 	public function shortcode($atts = array(), $content = '', $shortcode = '') {
@@ -378,13 +543,18 @@ final class Copy_Content extends Halftheory_Helper_Plugin {
 			return $content;
 		}
 
+		$res = array();
+
 		// copy-content
 		if ($shortcode == $this->shortcode_copycontent) {
 			$res = self::copycontent_get_content($atts, $content, get_the_ID());
 			// use the 'copycontent_get_content' filter to modify output before updating
 			if ($res['update']) {
 				$content = apply_filters('the_content', $res['content']);
-				$postarr = self::update_post_shortcode($res['post_id'], $res['content'], $res, $shortcode);
+				$update_post = $this->get_option(static::$prefix, 'copycontent_update_post_frontend', false);
+				if (!empty($update_post)) {
+					$postarr = self::update_post_shortcode($res['post_id'], $res['content'], $res, $shortcode);
+				}
 			}
 		}
 		// wp-copy-content
@@ -393,10 +563,26 @@ final class Copy_Content extends Halftheory_Helper_Plugin {
 			// use the 'wpcopycontent_get_content' filter to modify output before updating
 			if ($res['update']) {
 				$content = apply_filters('the_content', $res['content']);
-				$postarr = self::update_post_shortcode($res['post_id'], $res['content'], $res, $shortcode);
+				$update_post = $this->get_option(static::$prefix, 'wpcopycontent_update_post_frontend', false);
+				if (!empty($update_post)) {
+					$postarr = self::update_post_shortcode($res['post_id'], $res['content'], $res, $shortcode);
+				}
 				if (!empty($res['content_loop'])) {
 					$this->add_loop_end($res['content_loop']);
 				}
+			}
+		}
+
+		// wpautop
+		$arr = $this->get_shortcode_defaults($shortcode, 'user');
+		if (array_key_exists('atts', $res)) {
+			if (array_key_exists('wpautop', $res['atts'])) {
+				$arr = wp_parse_args($res['atts'], $arr);
+			}
+		}
+		if (array_key_exists('wpautop', $arr)) {
+			if ($arr['wpautop']) {
+				$content = wpautop($content);
 			}
 		}
 
@@ -404,13 +590,12 @@ final class Copy_Content extends Halftheory_Helper_Plugin {
 	}
 
 	private function add_loop_end($str = '') {
+		$str = trim($str);
+		if ($this->empty_notzero($str)) {
+			return;
+		}
 		if (empty($this->loop_ends)) {
-			global $wp_filter;
-			$i = 20;
-			while ($wp_filter['loop_end']->offsetExists($i) === true) {
-				$i++;
-			}
-			add_action('loop_end', array($this,'loop_end'), $i);
+			add_action('loop_end', array($this,'loop_end'), $this->get_filter_next_priority('loop_end', 20));
 		}
 		$this->loop_ends[] = $str;
 	}
@@ -428,6 +613,9 @@ final class Copy_Content extends Halftheory_Helper_Plugin {
 		if (!$wp_query->in_the_loop) {
 			return;
 		}
+		if (!$wp_query->is_singular) {
+			return;
+		}
 		if (empty($this->loop_ends)) {
 			return;
 		}
@@ -435,6 +623,151 @@ final class Copy_Content extends Halftheory_Helper_Plugin {
 			echo apply_filters('copycontent_shortcode', $value, $this->shortcode_wpcopycontent);
 		}
 		$this->loop_ends = array();
+	}
+
+	/* filters - not implemented. examples only. use in themes. */
+
+	public static function copycontent_get_content_default($res = array()) {
+		$plugin = new static(static::$plugin_basename, static::$prefix, false);
+		$check_fields = array('content', 'excerpt');
+		foreach ($check_fields as $field) {
+			if (!isset($res[$field])) {
+				continue;
+			}
+			if (empty($res[$field])) {
+				continue;
+			}
+			$res[$field] = preg_replace("/[\s]*<br[\/ ]*>[\s]*/s", "\n", $res[$field]);
+			if ($field == 'excerpt') {
+				$res['excerpt'] = strip_tags($res['excerpt'], '<a><img><strong><b><em><button>');
+			}
+			$res[$field] = $plugin->trim_excess_space(force_balance_tags($res[$field]));
+		}
+		return $res;
+	}
+
+	public static function copycontent_get_content_fix_links_google($res = array()) {
+		if (!isset($res['atts']['url'])) {
+			return $res;
+		}
+		if (empty($res['atts']['url'])) {
+			return $res;
+		}
+		$func = function($matches) {
+			parse_str($matches[1], $output);
+			if (isset($output['url'])) {
+				return $output['url'];
+			}
+			return $matches[0];
+		};
+		$func2 = function($matches) {
+			parse_str($matches[1], $output);
+			if (isset($output['url'])) {
+				return '"'.$output['url'].'"';
+			}
+			return $matches[0];
+		};
+		$check_fields = array('content', 'excerpt');
+		foreach ($check_fields as $field) {
+			if (!isset($res[$field])) {
+				continue;
+			}
+			if (empty($res[$field])) {
+				continue;
+			}
+			if (strpos($res[$field], '/url?') === false) {
+				continue;
+			}
+			$res[$field] = preg_replace_callback(
+				"/http[s]?:\/\/[\w\-\.]+\/url\?([\w\-\.\/\!\$\*\+\:\(\)\=~@&',;%_]+)/s",
+				$func,
+				$res[$field]
+			);
+			$res[$field] = preg_replace_callback(
+				"/\"\/url\?([\w\-\.\/\!\$\*\+\:\(\)\=~@&',;%_]+)\"/s",
+				$func2,
+				$res[$field]
+			);
+		}
+		return $res;
+	}
+
+	public static function copycontent_get_content_fix_links_facebook($res = array()) {
+		if (!isset($res['atts']['url'])) {
+			return $res;
+		}
+		if (empty($res['atts']['url'])) {
+			return $res;
+		}
+		if (strpos($res['atts']['url'], 'facebook.com') === false) {
+			return $res;
+		}
+		$query_vars = array('eid', 'fbclid', '_nc_cat', '_nc_ohc', '_nc_ht');
+		$func = function($matches) {
+			return urldecode($matches[1]);
+		};
+		$check_fields = array('content', 'excerpt');
+		foreach ($check_fields as $field) {
+			if (!isset($res[$field])) {
+				continue;
+			}
+			if (empty($res[$field])) {
+				continue;
+			}
+			if (strpos($res[$field], 'http') === false) {
+				continue;
+			}
+			$res[$field] = preg_replace_callback(
+				"/http[s]?:\/\/[\w\-\.]+\/l\.php\?u\=([\w\-\.\/\!\$\*\+\:\(\)\=~@&',;%_#]+)/s",
+				$func,
+				$res[$field]
+			);
+			$res[$field] = preg_replace("/(http[s]?:\/\/[\w\-\.]+\/[^\?]*)\?(".implode("|", $query_vars).")\=[\w\-\.\=&;%_]+/s", "$1", $res[$field]);
+			$res[$field] = preg_replace("/(http[s]?:\/\/[\w\-\.]+\/[^\?]*\?[\w\-\.\/\!\$\*\+\:\(\)\=~@&',;%_]+?)(&|&amp;)(".implode("|", $query_vars).")\=[\w\-\.\=&;%_]+/s", "$1", $res[$field]);
+			$res[$field] = preg_replace("/(http[s]?:\/\/[\w\-\.]+\/[^&]*)(&|&amp;)h\=[\w\-\=&;_]+/s", "$1", $res[$field]);
+			$res[$field] = preg_replace("/(http[s]?:\/\/[\w\-\.]+\/[^\"]*?)(&|&amp;)h\=[\w\-\=&;_]+\"/s", "$1\"", $res[$field]);
+		}
+		return $res;
+	}
+
+	public static function copycontent_get_content_fix_img_lazy($res = array()) {
+		$plugin = new static(static::$plugin_basename, static::$prefix, false);
+		$check_fields = array('content', 'excerpt');
+		foreach ($check_fields as $field) {
+			if (!isset($res[$field])) {
+				continue;
+			}
+			if (empty($res[$field])) {
+				continue;
+			}
+			if (strpos($res[$field], '<img ') === false && strpos($res[$field], 'lazy') === false) {
+				continue;
+			}
+			if (preg_match_all("/<img [^>]+>/is", $res[$field], $matches)) {
+				foreach ($matches[0] as $value) {
+					if (preg_match("/ class=\"[\"]*?lazy[\"]*\"/is", $value)) {
+						$file_bad = $file_good = false;
+						$urls = wp_extract_urls(wp_specialchars_decode($value));
+						foreach ($urls as $url) {
+							if (!$file_good && $plugin->is_valid_file($url)) {
+								$file_good = $url;
+							}
+							if (!$file_bad && !$plugin->is_valid_file($url)) {
+								$file_bad = $url;
+							}
+							if ($file_good && $file_bad) {
+								break;
+							}
+						}
+						if ($file_good && $file_bad) {
+							$link_new = str_replace($file_bad, $file_good, $value);
+							$res[$field] = str_replace($value, $link_new, $res[$field]);
+						}
+					}
+				}
+			}
+		}
+		return $res;
 	}
 
 	/* functions - copy-content */
@@ -494,14 +827,14 @@ final class Copy_Content extends Halftheory_Helper_Plugin {
 			return apply_filters('copycontent_get_content', $res);
 		}
 
-		if (!isset($atts['refresh']) && !isset($atts['force-update']) && !isset($atts['force-refresh']) && !$plugin->empty_notzero($res['content'])) {
+		if (!isset($atts['refresh_time']) && !isset($atts['force_refresh']) && !$plugin->empty_notzero($res['content'])) {
 			$res['messages'][] = $plugin->message_array('updated', __('Success: Refresh not required.'));
 			return apply_filters('copycontent_get_content', $res);
 		}
 
 		$str = '';
-		$force_refresh = isset($atts['force-refresh']);
-		$transient_name = $plugin::$prefix.'_'.hash('adler32', $atts['url']);
+		$force_refresh = isset($atts['force_refresh']) ? $atts['force_refresh'] : false;
+		$transient_name = $plugin::$prefix.'_'.hash('adler32', untrailingslashit($atts['url']));
 
 		// get_transient
 		if ($actions['get_transient']) {
@@ -527,11 +860,12 @@ final class Copy_Content extends Halftheory_Helper_Plugin {
 					$res['messages'][] = $plugin->message_array('updated', __('Success: URL contents was refreshed.'));
 					// set_transient
 					if ($actions['set_transient']) {
-						if (!isset($atts['refresh'])) {
-							$atts['refresh'] = 0;
+						if (!isset($atts['refresh_time'])) {
+							$atts['refresh_time'] = 0;
 						}
 						$plugin->delete_transient($transient_name);
-						if ($plugin->set_transient($transient_name, $str, $atts['refresh'])) {
+						if ($str_tmp = $plugin->set_transient_html($transient_name, $str, $atts['refresh_time'])) {
+							$str = $str_tmp;
 							$res['messages'][] = $plugin->message_array('updated', __('Success: Transient was set.'));
 						}
 						else {
@@ -562,33 +896,70 @@ final class Copy_Content extends Halftheory_Helper_Plugin {
 			return apply_filters('copycontent_get_content', $res);
 		}
 
+		$has_dom = true;
+		if (!class_exists('DOMXPath')) {
+			$has_dom = false;
+			$res['messages'][] = $plugin->message_array('error', __('Error: DOMXPath not found. Parsing cannot continue.'));
+		}
+
 		// update_excerpt
 		if ($actions['update_excerpt']) {
 			if (isset($atts['update_excerpt'])) {
 				$found = false;
-				$search = array(
-					'<meta name="description" ([^>]+)>' => 'content="([^"]+)"',
-					'<meta property="og:description" ([^>]+)>' => 'content="([^"]+)"',
-					'<meta name="twitter:title" ([^>]+)>' => 'content="([^"]+)"',
-				);
-				foreach ($search as $key => $value) {
-					preg_match_all("/$key/is", $str, $matches);
-					if (!$matches) {
-						continue;
+				// try dom
+				if (isset($atts['excerpt']) && !empty($atts['excerpt']) && $has_dom) {
+					$dom = $plugin->loadHTML($str);
+					$xpath = new DOMXPath($dom);
+					$keep = array();
+					$xpath_q = $plugin->selector_to_xpath($atts['excerpt']); // TODO: change! this is array now
+					$tags = $xpath->query('//'.$xpath_q);
+					if ($tags->length == 0) {
+						$res['messages'][] = $plugin->message_array('error', __('Alert: Excerpt not found - ').$atts['excerpt']);
 					}
-					if (empty($matches[1])) {
-						continue;
+					foreach ($tags as $tag) {
+						// node
+						if ($tag->tagName) {
+							if ($tag->tagName == $plugin->domwrapper) {
+								continue;
+							}
+							$keep[] = $tag->ownerDocument->saveXML($tag);
+						}
+						// comment
+						elseif ($tag->nodeName == '#comment' && !empty($tag->nodeValue)) {
+							$keep[] = $tag->nodeValue;
+						}
 					}
-					preg_match_all("/$value/is", $matches[1][0], $matches);
-					if (!$matches) {
-						continue;
+					if (!empty($keep)) {
+						$res['excerpt'] = implode("\n", $keep);
+						$found = true;
 					}
-					if (empty($matches[1])) {
-						continue;
+				}
+				// try defaults
+				if (!$found) {
+					$search = array(
+						'<meta name="description" ([^>]+)>' => 'content="([^"]+)"',
+						'<meta property="og:description" ([^>]+)>' => 'content="([^"]+)"',
+						'<meta name="twitter:title" ([^>]+)>' => 'content="([^"]+)"',
+					);
+					foreach ($search as $key => $value) {
+						preg_match_all("/$key/is", $str, $matches);
+						if (!$matches) {
+							continue;
+						}
+						if (empty($matches[1])) {
+							continue;
+						}
+						preg_match_all("/$value/is", $matches[1][0], $matches);
+						if (!$matches) {
+							continue;
+						}
+						if (empty($matches[1])) {
+							continue;
+						}
+						$res['excerpt'] = $matches[1][0];
+						$found = true;
+						break;
 					}
-					$res['excerpt'] = $matches[1][0];
-					$found = true;
-					break;
 				}
 				if ($found) {
 					$res['messages'][] = $plugin->message_array('updated', __('Success: Excerpt was found.'));
@@ -603,29 +974,73 @@ final class Copy_Content extends Halftheory_Helper_Plugin {
 		if ($actions['update_thumbnail']) {
 			if (isset($atts['update_thumbnail'])) {
 				$found = false;
-				$search = array(
-					'<link rel="image_src" ([^>]+)>' => 'href="([^"]+)"',
-					'<meta property="og:image" ([^>]+)>' => 'content="([^"]+)"',
-					'<meta name="twitter:image" ([^>]+)>' => 'content="([^"]+)"',
-				);
-				foreach ($search as $key => $value) {
-					preg_match_all("/$key/is", $str, $matches);
-					if (!$matches) {
-						continue;
+				// try dom
+				if (isset($atts['thumbnail']) && !empty($atts['thumbnail']) && $has_dom) {
+					$dom = $plugin->loadHTML($str);
+					$xpath = new DOMXPath($dom);
+					$keep = array();
+					$xpath_q = $plugin->selector_to_xpath($atts['thumbnail']); // TODO: change! this is array now
+					$tags = $xpath->query('//'.$xpath_q);
+					if ($tags->length == 0) {
+						$res['messages'][] = $plugin->message_array('error', __('Alert: Thumbnail not found - ').$atts['thumbnail']);
 					}
-					if (empty($matches[1])) {
-						continue;
+					foreach ($tags as $tag) {
+						// node
+						if ($tag->tagName) {
+							if ($tag->tagName == $plugin->domwrapper) {
+								continue;
+							}
+							$keep[] = $tag->ownerDocument->saveXML($tag);
+						}
+						// comment
+						elseif ($tag->nodeName == '#comment' && !empty($tag->nodeValue)) {
+							$keep[] = $tag->nodeValue;
+						}
 					}
-					preg_match_all("/$value/is", $matches[1][0], $matches);
-					if (!$matches) {
-						continue;
+					if (!empty($keep)) {
+						$tmp = $plugin->relative_links_absolute(implode("\n", $keep), $atts['url']);
+						$file_types = $plugin::get_file_types();
+						if (preg_match_all("/(http[s]?:\/\/[\w\-\.]+\/[\w\-\.\/\!\$\*\+\:\(\)\=~@&',;%_ ]+\.(".implode("|", $file_types['image']['extensions'])."))([^a-z0-9]|$)/is", $tmp, $matches)) {
+							if (!empty($matches[1])) {
+								foreach ($matches[1] as $value) {
+									if ($file = $plugin->is_valid_file($value, 'image')) {
+										$res['thumbnail'] = $file;
+										$found = true;
+										break;
+									}
+								}
+							}
+						}
 					}
-					if (empty($matches[1])) {
-						continue;
+				}
+				// try defaults
+				if (!$found) {
+					$search = array(
+						'<link rel="image_src" ([^>]+)>' => 'href="([^"]+)"',
+						'<meta property="og:image" ([^>]+)>' => 'content="([^"]+)"',
+						'<meta name="twitter:image" ([^>]+)>' => 'content="([^"]+)"',
+					);
+					foreach ($search as $key => $value) {
+						preg_match_all("/$key/is", $str, $matches);
+						if (!$matches) {
+							continue;
+						}
+						if (empty($matches[1])) {
+							continue;
+						}
+						preg_match_all("/$value/is", $matches[1][0], $matches);
+						if (!$matches) {
+							continue;
+						}
+						if (empty($matches[1])) {
+							continue;
+						}
+						if ($file = $plugin->is_valid_file($matches[1][0], 'image')) {
+							$res['thumbnail'] = $file;
+							$found = true;
+							break;
+						}
 					}
-					$res['thumbnail'] = $matches[1][0];
-					$found = true;
-					break;
 				}
 				if ($found) {
 					$res['messages'][] = $plugin->message_array('updated', __('Success: Thumbnail was found.'));
@@ -636,23 +1051,18 @@ final class Copy_Content extends Halftheory_Helper_Plugin {
 			}
 		}
 
-		$has_dom = true;
-		if (!class_exists('DOMXPath')) {
-			$has_dom = false;
-			$res['messages'][] = $plugin->message_array('error', __('Error: DOMXPath not found. Parsing cannot continue.'));
-		}
-
 		// include
 		if ($actions['include'] && $has_dom) {
 			if (isset($atts['include'])) {
 				$dom = $plugin->loadHTML($str);
 				$xpath = new DOMXPath($dom);
 				$keep = array();
+				$errors = array();
 				foreach ($atts['include'] as $value) {
 					$xpath_q = $plugin->selector_to_xpath($value);
 					$tags = $xpath->query('//'.$xpath_q);
 					if ($tags->length == 0) {
-						$res['messages'][] = $plugin->message_array('error', __('Alert: Include not found - ').$value);
+						$errors[] = $value;
 						continue;
 					}
 					foreach ($tags as $tag) {
@@ -661,16 +1071,21 @@ final class Copy_Content extends Halftheory_Helper_Plugin {
 							if ($tag->tagName == $plugin->domwrapper) {
 								continue;
 							}
-							$keep[$value] = $tag->ownerDocument->saveXML($tag);
+							$keep[] = $tag->ownerDocument->saveXML($tag);
 						}
 						// comment
 						elseif ($tag->nodeName == '#comment' && !empty($tag->nodeValue)) {
-							$keep[$value] = $tag->nodeValue;
+							$keep[] = $tag->nodeValue;
 						}
 					}
 				}
 				$str = implode("\n", $keep);
-				$res['messages'][] = $plugin->message_array('updated', __('Success: Included - ').implode(", ", array_keys($keep)));
+				if (!empty($errors)) {
+					$res['messages'][] = $plugin->message_array('error', __('Alert: Include not found - ').implode(", ", $errors));
+				}
+				if (!empty($keep)) {
+					$res['messages'][] = $plugin->message_array('updated', __('Success: Included - ').implode(", ", array_keys($keep)));
+				}
 			}
 		}
 
@@ -680,11 +1095,12 @@ final class Copy_Content extends Halftheory_Helper_Plugin {
 				$dom = $plugin->loadHTML($str);
 				$xpath = new DOMXPath($dom);
 				$remove = array();
+				$errors = array();
 				foreach ($atts['exclude'] as $value) {
 					$xpath_q = $plugin->selector_to_xpath($value);
 					$tags = $xpath->query('//'.$xpath_q);
 					if ($tags->length == 0) {
-						$res['messages'][] = $plugin->message_array('error', __('Alert: Exclude not found - ').$value);
+						$errors[] = $value;
 						continue;
 					}
 					foreach ($tags as $tag) {
@@ -698,6 +1114,9 @@ final class Copy_Content extends Halftheory_Helper_Plugin {
 						$remove[$value] = $tag;
 					}
 				}
+				if (!empty($errors)) {
+					$res['messages'][] = $plugin->message_array('error', __('Alert: Exclude not found - ').implode(", ", $errors));
+				}
 				if (!empty($remove)) {
 					foreach($remove as $value) {
 						$value->parentNode->removeChild($value);
@@ -710,96 +1129,112 @@ final class Copy_Content extends Halftheory_Helper_Plugin {
 
 		// tags
 		if ($actions['tags']) {
-			if (isset($atts['tags'])) {
-				// remove attributes - use dom
-				if ($has_dom) {
-					$dom = $plugin->loadHTML($str);
-					$xpath = new DOMXPath($dom);
-					$msg_remove_attr = array();
-					foreach ($atts['tags'] as $key => $value) { // $key is tag here
-						if (!is_array($value)) {
-							continue;
-						}
-						$xpath_q = $plugin->selector_to_xpath($key);
-						$tags = $xpath->query('//'.$xpath_q);
-						if ($tags->length == 0) {
-							$res['messages'][] = $plugin->message_array('error', __('Alert: Tag not found - ').$key);
-							continue;
-						}
-						foreach ($tags as $tag) {
-							// only nodes
-							if (!$tag->tagName) {
-								continue;
-							}
-							if ($tag->tagName == $plugin->domwrapper) {
-								continue;
-							}
-							$remove_attr = array();
-							for ($i = 0; $i < $tag->attributes->length; $i++) {
-								$my_attr = $tag->attributes->item($i)->name;
-								if (!in_array($my_attr, $value)) {
-									$remove_attr[] = $my_attr;
-								}
-							}
-							if (!empty($remove_attr)) {
-								foreach ($remove_attr as $my_attr) {
-									$tag->removeAttribute($my_attr);
-								}
-								$msg_remove_attr[] = $key;
-							}
-						}
-					}
-					if (!empty($msg_remove_attr)) {
-						$str = $plugin->saveHTML($dom);
-						$res['messages'][] = $plugin->message_array('updated', __('Success: Tags updated - ').implode(", ", array_unique($msg_remove_attr)));
-					}
-				}
-			}
-			// remove tags - use strip_tags (safely removes nested tags)
-			// also strip tags/comments when there is nothing in tags array
-			if (preg_match_all("/<([\w]+)[^>]*>/", $str, $matches, PREG_PATTERN_ORDER)) {
-				if (!empty($matches[1])) {
-					$msg_remove = array();
-					$tags = array_unique($matches[1]);
-					if (isset($atts['tags'])) {
-						$strip_all = array('script', 'style'); // script/style tags - special case - remove all contents
+			$func_tags = function($str = '', $messages = true) use (&$res, $atts, $plugin, $has_dom) {
+				$errors = array();
+				if (isset($atts['tags'])) {
+					// remove attributes - use dom
+					if ($has_dom) {
+						$dom = $plugin->loadHTML($str);
+						$xpath = new DOMXPath($dom);
+						$msg_remove_attr = array();
 						foreach ($atts['tags'] as $key => $value) { // $key is tag here
-							if ($value === false) {
-								$k = array_search($key, $tags);
-								if (!$plugin->empty_notzero($k)) {
-									unset($tags[$k]);
-									$msg_remove[] = $key;
-									if (in_array($key, $strip_all)) {
-										$str = preg_replace("/<".$key."[^>]*>.*?<\/".$key.">/is", "", $str);
-										$str = preg_replace("/<[\/]?".$key."[^>]*>/is", "", $str);
+							if (!is_array($value)) {
+								continue;
+							}
+							$xpath_q = $plugin->selector_to_xpath($key);
+							$tags = $xpath->query('//'.$xpath_q);
+							if ($tags->length == 0) {
+								$errors[] = $key;
+								continue;
+							}
+							foreach ($tags as $tag) {
+								// only nodes
+								if (!$tag->tagName) {
+									continue;
+								}
+								if ($tag->tagName == $plugin->domwrapper) {
+									continue;
+								}
+								$remove_attr = array();
+								for ($i = 0; $i < $tag->attributes->length; $i++) {
+									$my_attr = $tag->attributes->item($i)->name;
+									if (!in_array($my_attr, $value)) {
+										$remove_attr[] = $my_attr;
 									}
 								}
-								else {
-									$res['messages'][] = $plugin->message_array('error', __('Alert: Tag not found - ').$key);
+								if (!empty($remove_attr)) {
+									foreach ($remove_attr as $my_attr) {
+										$tag->removeAttribute($my_attr);
+									}
+									$msg_remove_attr[] = $key;
 								}
 							}
 						}
-					}
-					$tags = '<'.implode('><', $tags).'>';
-					// comments?
-					$has_comments = false;
-					if (isset($atts['include'])) {
-						foreach ($atts['include'] as $value) {
-							if (strpos($value, "/comment") !== false) {
-								$has_comments = true;
-								break;
+						if (!empty($msg_remove_attr)) {
+							$str = $plugin->saveHTML($dom);
+							if ($messages) {
+								$res['messages'][] = $plugin->message_array('updated', __('Success: Tags updated - ').implode(", ", array_unique($msg_remove_attr)));
 							}
 						}
 					}
-					if ($has_comments) {
-						$str = $plugin->strip_tags_html_comments($str, $tags);
+				}
+				// remove tags - use strip_tags (safely removes nested tags)
+				// also strip tags/comments when there is nothing in tags array
+				if (preg_match_all("/<([\w]+)[^>]*>/", $str, $matches, PREG_PATTERN_ORDER)) {
+					if (!empty($matches[1])) {
+						$msg_remove = array();
+						$tags = array_unique($matches[1]);
+						if (isset($atts['tags'])) {
+							$strip_all = array('script', 'style'); // script/style tags - special case - remove all contents
+							foreach ($atts['tags'] as $key => $value) { // $key is tag here
+								if ($value === false) {
+									$k = array_search($key, $tags);
+									if (!$plugin->empty_notzero($k)) {
+										unset($tags[$k]);
+										$msg_remove[] = $key;
+										if (in_array($key, $strip_all)) {
+											$str = preg_replace("/<".$key."[^>]*>.*?<\/".$key.">/is", "", $str);
+											$str = preg_replace("/<[\/]?".$key."[^>]*>/is", "", $str);
+										}
+									}
+									else {
+										$errors[] = $key;
+									}
+								}
+							}
+						}
+						$tags = '<'.implode('><', $tags).'>';
+						// comments?
+						$has_comments = false;
+						if (isset($atts['include'])) {
+							foreach ($atts['include'] as $value) {
+								if (strpos($value, "/comment") !== false) {
+									$has_comments = true;
+									break;
+								}
+							}
+						}
+						if ($has_comments) {
+							$str = $plugin->strip_tags_html_comments($str, $tags);
+						}
+						else {
+							$str = strip_tags($str, $tags);
+						}
+						if (!empty($msg_remove) && $messages) {
+							$res['messages'][] = $plugin->message_array('updated', __('Success: Tags removed - ').implode(", ", $msg_remove));
+						}
 					}
-					else {
-						$str = strip_tags($str, $tags);
-					}
-					if (!empty($msg_remove)) {
-						$res['messages'][] = $plugin->message_array('updated', __('Success: Tags removed - ').implode(", ", $msg_remove));
-					}
+				}
+				if (!empty($errors) && $messages) {
+					$res['messages'][] = $plugin->message_array('error', __('Alert: Tag not found - ').implode(", ", $errors));
+				}
+				return $str;
+			}; // func_tags
+
+			$str = $func_tags($str);
+			if ($actions['update_excerpt']) {
+				if (isset($atts['update_excerpt']) && !empty($res['excerpt'])) {
+					$res['excerpt'] = $func_tags($res['excerpt'], false);
 				}
 			}
 		}
@@ -807,6 +1242,11 @@ final class Copy_Content extends Halftheory_Helper_Plugin {
 		// relative_links_absolute
 		if ($actions['relative_links_absolute']) {
 			$str = $plugin->relative_links_absolute($str, $atts['url']);
+			if ($actions['update_excerpt']) {
+				if (isset($atts['update_excerpt']) && !empty($res['excerpt'])) {
+					$res['excerpt'] = $plugin->relative_links_absolute($res['excerpt'], $atts['url']);
+				}
+			}
 		}
 
 		// file_handling
@@ -815,13 +1255,13 @@ final class Copy_Content extends Halftheory_Helper_Plugin {
 			list($str, $res['file_handling']['content']) = $plugin::file_handling($str, $post_id, 'all', $plugin->shortcode_copycontent);
 			// excerpt
 			if ($actions['update_excerpt']) {
-				if (isset($atts['update_excerpt'])) {
+				if (isset($atts['update_excerpt']) && !empty($res['excerpt'])) {
 					list($res['excerpt'], $res['file_handling']['excerpt']) = $plugin::file_handling($res['excerpt'], $post_id, 'all', $plugin->shortcode_copycontent);
 				}
 			}
 			// thumbnail
 			if ($actions['update_thumbnail']) {
-				if (isset($atts['update_thumbnail'])) {
+				if (isset($atts['update_thumbnail']) && !empty($res['thumbnail'])) {
 					list($res['thumbnail'], $res['file_handling']['thumbnail']) = $plugin::file_handling($res['thumbnail'], $post_id, 'image', $plugin->shortcode_copycontent);
 				}
 			}
@@ -829,6 +1269,11 @@ final class Copy_Content extends Halftheory_Helper_Plugin {
 		}
 
 		$str = $plugin->trim_excess_space($str);
+		if ($actions['update_excerpt']) {
+			if (isset($atts['update_excerpt']) && !empty($res['excerpt'])) {
+				$res['excerpt'] = $plugin->trim_excess_space($res['excerpt']);
+			}
+		}
 
 		if ($res['content'] != $str) {
 			$res['content'] = $str;
@@ -939,6 +1384,28 @@ final class Copy_Content extends Halftheory_Helper_Plugin {
 				$atts['query'] = apply_filters('wpcopycontent_query', $atts['query'], $res);
 				$res['atts']['query'] = $atts['query'];
 
+				// if the blog is switched we may need to add the post_types, taxonomies
+			    if ($switch_blog && isset($atts['query']['tax_query'])) {
+					global $typenow;
+			    	$taxonomy_object_types = !empty($typenow) ? $typenow : get_post_types(array('public'=>true),'names');
+			    	if (isset($atts['query']['post_type'])) {
+			    		if ($atts['query']['post_type'] !== 'any') {
+				    		$taxonomy_object_types = $plugin->make_array($atts['query']['post_type']);
+				    		foreach ($taxonomy_object_types as $value) {
+				    			$plugin::register_post_type($value);
+				    		}
+			    		}
+			    	}
+			    	foreach ($atts['query']['tax_query'] as $value) {
+			    		if (!is_array($value)) {
+			    			continue;
+			    		}
+			    		if (isset($value['taxonomy'])) {
+			    			$plugin::register_taxonomy($value['taxonomy'], $taxonomy_object_types);
+			    		}
+			    	}
+			    }
+
 				$query = new WP_Query($atts['query']);
 				if ($query->have_posts()) {
 					$query->in_the_loop = false; // extra security in avoiding our loop_end action
@@ -946,7 +1413,7 @@ final class Copy_Content extends Halftheory_Helper_Plugin {
 					if ($query->is_singular()) {
 						$query->the_post();
 						global $post;
-						if ($post->ID != $post_id) {
+						if ($post->ID != $post_id) { // don't check if blog switched!
 							$str = $post->post_content;
 						}
 						else {
@@ -963,9 +1430,16 @@ final class Copy_Content extends Halftheory_Helper_Plugin {
 								the_post();
 								global $post;
 								if ($post->ID != $post_id) {
-									if ($template = $plugin::get_template()) {
-										$template = apply_filters('wpcopycontent_template', $template, $post, $atts['query']);
+									$template = false;
+									$template = apply_filters('wpcopycontent_template', $template, $post, $atts['query'], $res);
+									if (empty($template)) {
+										$template = $plugin::get_template();
+									}
+									if ($template) {
 										load_template($template, false);
+									}
+									else {
+										load_template(get_stylesheet_directory().'/index.php', false);
 									}
 								}
 							} // End the loop.
@@ -1002,17 +1476,17 @@ final class Copy_Content extends Halftheory_Helper_Plugin {
 		}
 
 		// transient is only used to check 'refresh' for singles
-		if (isset($atts['refresh']) && !empty($post_id) && is_object($query)) {
+		if (isset($atts['refresh_time']) && !empty($post_id) && is_object($query)) {
 			if ($query->is_singular()) {
-				$force_refresh = isset($atts['force-refresh']);
-				$transient_name = $plugin::$prefix.'_'.hash('adler32', $post->guid);
+				$force_refresh = isset($atts['force_refresh']) ? $atts['force_refresh'] : false;
+				$transient_name = $plugin::$prefix.'_'.hash('adler32', untrailingslashit($post->guid));
 				// get_transient
 				if ($actions['get_transient']) {
 					$transient = $plugin->get_transient($transient_name);
 					if ($transient !== false) {
 						$res['messages'][] = $plugin->message_array('updated', __('Success: Transient found.'));
 						// maybe return here?
-						if ($transient == $post->post_content && !isset($atts['force-update']) && !isset($atts['force-refresh']) && !$plugin->empty_notzero($res['content'])) {
+						if ($transient == $post->post_content && !isset($atts['force_refresh']) && !$plugin->empty_notzero($res['content'])) {
 							if (is_object($query)) {
 								$query = null;
 								wp_reset_postdata();
@@ -1030,7 +1504,7 @@ final class Copy_Content extends Halftheory_Helper_Plugin {
 					// set_transient
 					if ($actions['set_transient']) {
 						$plugin->delete_transient($transient_name);
-						if ($plugin->set_transient($transient_name, $post->post_content, $atts['refresh'])) {
+						if ($plugin->set_transient_html($transient_name, $post->post_content, $atts['refresh_time'])) {
 							$res['messages'][] = $plugin->message_array('updated', __('Success: Transient was set.'));
 						}
 						else {
@@ -1128,11 +1602,11 @@ final class Copy_Content extends Halftheory_Helper_Plugin {
 							if ($tag->tagName == $plugin->domwrapper) {
 								continue;
 							}
-							$keep[$value] = $tag->ownerDocument->saveXML($tag);
+							$keep[] = $tag->ownerDocument->saveXML($tag);
 						}
 						// comment
 						elseif ($tag->nodeName == '#comment' && !empty($tag->nodeValue)) {
-							$keep[$value] = $tag->nodeValue;
+							$keep[] = $tag->nodeValue;
 						}
 					}
 				}
@@ -1192,13 +1666,13 @@ final class Copy_Content extends Halftheory_Helper_Plugin {
 			list($str, $res['file_handling']['content']) = $plugin::file_handling($str, $post_id, 'all', $plugin->shortcode_wpcopycontent);
 			// excerpt
 			if ($actions['update_excerpt']) {
-				if (isset($atts['update_excerpt'])) {
+				if (isset($atts['update_excerpt']) && !empty($res['excerpt'])) {
 					list($res['excerpt'], $res['file_handling']['excerpt']) = $plugin::file_handling($res['excerpt'], $post_id, 'all', $plugin->shortcode_wpcopycontent);
 				}
 			}
 			// thumbnail
 			if ($actions['update_thumbnail']) {
-				if (isset($atts['update_thumbnail'])) {
+				if (isset($atts['update_thumbnail']) && !empty($res['thumbnail'])) {
 					list($res['thumbnail'], $res['file_handling']['thumbnail']) = $plugin::file_handling($res['thumbnail'], $post_id, 'image', $plugin->shortcode_wpcopycontent, false);
 				}
 			}
@@ -1255,7 +1729,7 @@ final class Copy_Content extends Halftheory_Helper_Plugin {
 
 		// find which file types to check
 		$file_types = array();
-		$file_types_system = $plugin->get_file_types();
+		$file_types_system = $plugin::get_file_types();
 		if (is_array($file_types_user)) {
 			foreach ($file_types_user as $value) {
 				if (isset($file_types_system[$value])) {
@@ -1283,10 +1757,11 @@ final class Copy_Content extends Halftheory_Helper_Plugin {
 		$res['file_types'] = $file_types;
 
 		// put all external files in an array
+		// todo: maybe use wp_extract_urls?
 		$external_files = array();
 		$my_host = parse_url(home_url(), PHP_URL_HOST);
 		foreach ($file_types as $key => $value) {
-			if (preg_match_all("/(http[s]?:\/\/[a-z0-9\-\.]+\/[\w\-\.\/\!\$\*\+\:\(\)\=~@&',;% ]+\.(".implode("|", $value['extensions'])."))([^a-z0-9]|$)/is", $str, $matches)) {
+			if (preg_match_all("/(http[s]?:\/\/[\w\-\.]+\/[\w\-\.\/\!\$\*\+\:\(\)\=~@&',;%_ ]+\.(".implode("|", $value['extensions'])."))([^a-z0-9]|$)/is", $str, $matches)) {
 				if (!empty($matches[1])) {
 					foreach ($matches[1] as $match) {
 						if ($my_host == parse_url($match, PHP_URL_HOST) && $ignore_my_host) {
@@ -1315,7 +1790,7 @@ final class Copy_Content extends Halftheory_Helper_Plugin {
 		$file_exists_arr = $plugin->make_array($plugin->get_option($plugin::$prefix, $plugin->option_prefix[$shortcode].'_file_exists', array()));
 		$post_data = array(
 			'post_author' => get_current_user_id(),
-			'post_content' =>__('Created by plugin: ').$plugin->plugin_title,
+			'post_content' => $plugin->plugin_description,
 		);
 		foreach ($external_files as $key => $urls) {
 			$file_handling = 'keep';
@@ -1338,6 +1813,7 @@ final class Copy_Content extends Halftheory_Helper_Plugin {
 				foreach ($urls as $url) {
 					// already uploaded?
 					$exists = false;
+					$url_file_name = sanitize_file_name(basename($url));
 					$posts = array();
 					$args = array(
 						'post_type' => 'attachment',
@@ -1349,10 +1825,16 @@ final class Copy_Content extends Halftheory_Helper_Plugin {
 						'orderby' => 'modified',
 						'suppress_filters' => false,
 						'meta_query' => array(
+							'relation' => 'OR',
 							array(
 								'key' => '_wp_attached_file',
 								'compare' => 'LIKE',
-								'value' => basename($url),
+								'value' => $url_file_name,
+							),
+							array(
+								'key' => '_wp_attachment_metadata',
+								'compare' => 'LIKE',
+								'value' => $url_file_name,
 							)
 						)
 					);
@@ -1374,7 +1856,13 @@ final class Copy_Content extends Halftheory_Helper_Plugin {
 					if (!empty($posts) && !is_wp_error($posts)) {
 						foreach ($posts as $post) {
 							if ($arr = wp_get_attachment_metadata($post->ID)) {
-								if ($arr['file'] == basename($url) || strpos($arr['file'], '/'.basename($url)) !== false) {
+								if (isset($arr['file'])) { // not always there
+									$tmp = $arr['file'];
+								}
+								else {
+									$tmp = wp_get_attachment_url($post->ID);
+								}
+								if ($tmp == $url_file_name || strpos($tmp, '/'.$url_file_name) !== false) {
 									$exists = $post;
 									break;
 								}
@@ -1388,7 +1876,6 @@ final class Copy_Content extends Halftheory_Helper_Plugin {
 						}
 						$tmp = download_url($url);
 						if (is_wp_error($tmp)) {
-							@unlink($tmp);
 							continue;
 						}
 						$file_array = array(
@@ -1421,7 +1908,6 @@ final class Copy_Content extends Halftheory_Helper_Plugin {
 							// download new file
 							$tmp = download_url($url);
 							if (is_wp_error($tmp)) {
-								@unlink($tmp);
 								$replacements[$url] = $url_discard;
 								continue;
 							}
@@ -1460,7 +1946,7 @@ final class Copy_Content extends Halftheory_Helper_Plugin {
 							if ($filetype['type']) {
 								$postarr['post_mime_type'] = $filetype['type'];
 							}
-							$id = wp_update_post(array_merge($post_data, $postarr), true);
+							$id = wp_update_post(wp_slash(array_merge($post_data, $postarr)), true);
 							if (empty($id) || is_wp_error($id)) {
 								$replacements[$url] = $url_discard;
 								continue;
@@ -1476,7 +1962,6 @@ final class Copy_Content extends Halftheory_Helper_Plugin {
 							}
 							$tmp = download_url($url);
 							if (is_wp_error($tmp)) {
-								@unlink($tmp);
 								$replacements[$url] = $url_discard;
 								continue;
 							}
@@ -1508,7 +1993,7 @@ final class Copy_Content extends Halftheory_Helper_Plugin {
 		return array($str, $res);
 	}
 
-	private function download_functions_loaded() {
+	public function download_functions_loaded() {
 		if (!function_exists('download_url')) {
 			@include_once(ABSPATH.'wp-admin/includes/file.php');
 		}
@@ -1571,12 +2056,16 @@ final class Copy_Content extends Halftheory_Helper_Plugin {
 		score system for potential multiple shortcodes:
 		1. shortcode has same url
 		2. shortcode has high number of the same tags
-		3. or update first shortcode
+		3. or just update first shortcode
 		*/
 
 		$shortcode_regex = get_shortcode_regex(array($shortcode));
 
-		$func_replace = function($shortcode_full = '') use ($post, $content, $shortcode, $shortcode_regex) {
+  		$func_preg_escape_replacement = function($x) {
+			return preg_replace('/\$(\d)/', '\\\$$1', $x);
+  		};
+
+		$func_replace = function($shortcode_full = '') use ($post, $content, $shortcode, $shortcode_regex, $func_preg_escape_replacement) {
 			if (strpos($shortcode_full, $shortcode) === false) {
 				return false;
 			}
@@ -1594,9 +2083,9 @@ final class Copy_Content extends Halftheory_Helper_Plugin {
 			}
 			// with closing tag
 			else {
-				$replacement = preg_replace("/".$shortcode_regex."/is", "[$1$2$3]".$content."[/$2$6]", $shortcode_full, 1);
+				$replacement = preg_replace("/".$shortcode_regex."/is", "[$1$2$3]".$func_preg_escape_replacement($content)."[/$2$6]", $shortcode_full, 1);
 			}
-			return preg_replace("/".preg_quote($shortcode_full, '/')."/s", $replacement, $post->post_content, 1);
+			return preg_replace("/".preg_quote($shortcode_full, '/')."/s", $func_preg_escape_replacement($replacement), $post->post_content, 1);
 		};
 
 		$func = function() use ($post, $res, $shortcode_regex, $func_replace) {
@@ -1728,7 +2217,7 @@ final class Copy_Content extends Halftheory_Helper_Plugin {
 
 		// post
 		if ($update_post) {
-			$id = wp_update_post($postarr, true);
+			$id = wp_update_post(wp_slash($postarr), true);
 			if (empty($id) || is_wp_error($id)) {
 				return false;
 			}
@@ -1747,8 +2236,8 @@ final class Copy_Content extends Halftheory_Helper_Plugin {
 		$defaults_system = $this->get_shortcode_defaults($shortcode);
 		$defaults_system['update_excerpt'] = $this->get_option(static::$prefix, $this->option_prefix[$shortcode].'_update_excerpt', false);
 		$defaults_system['update_thumbnail'] = $this->get_option(static::$prefix, $this->option_prefix[$shortcode].'_update_thumbnail', false);
-		$defaults_user = $this->make_array(shortcode_parse_atts($this->get_option(static::$prefix, $this->option_prefix[$shortcode].'_shortcode_defaults', '')));
-		$defaults = wp_parse_args($defaults_user, $defaults_system);
+		$defaults = $this->get_shortcode_defaults($shortcode, 'user');
+
 		if (!is_array($atts)) {
 			$atts = $this->make_array(shortcode_parse_atts($atts));
 		}
@@ -1765,23 +2254,29 @@ final class Copy_Content extends Halftheory_Helper_Plugin {
 				return $str;
 			};
 			$atts = array_map($trim_quotes, $atts);
+			if (array_key_exists('force_refresh', $atts)) {
+				$atts['force_refresh'] = $this->is_true($atts['force_refresh']);
+			}
+			if (array_key_exists('update_excerpt', $atts)) {
+				$atts['update_excerpt'] = $this->is_true($atts['update_excerpt']);
+			}
+			if (isset($atts['excerpt'])) {
+				$atts['excerpt'] = $this->make_array($atts['excerpt']);
+			}
+			if (array_key_exists('update_thumbnail', $atts)) {
+				$atts['update_thumbnail'] = $this->is_true($atts['update_thumbnail']);
+			}
+			if (isset($atts['thumbnail'])) {
+				$atts['thumbnail'] = $this->make_array($atts['thumbnail']);
+			}
 			if (isset($atts['include'])) {
 				$atts['include'] = $this->make_array($atts['include']);
 			}
 			if (isset($atts['exclude'])) {
 				$atts['exclude'] = $this->make_array($atts['exclude']);
 			}
-			if (isset($atts['update_excerpt'])) {
-				$atts['update_excerpt'] = $this->is_true($atts['update_excerpt']);
-			}
-			if (isset($atts['update_thumbnail'])) {
-				$atts['update_thumbnail'] = $this->is_true($atts['update_thumbnail']);
-			}
-			if (isset($atts['force-update'])) {
-				$atts['force-update'] = $this->is_true($atts['force-update']);
-			}
-			if (isset($atts['force-refresh'])) {
-				$atts['force-refresh'] = $this->is_true($atts['force-refresh']);
+			if (array_key_exists('wpautop', $atts)) {
+				$atts['wpautop'] = $this->is_true($atts['wpautop']);
 			}
 			$tags = array_diff_key($atts, $defaults_system);
 			if (!empty($tags)) {
@@ -1834,9 +2329,36 @@ final class Copy_Content extends Halftheory_Helper_Plugin {
 						return $key;
 					};
 					$func_array = function($key, $value, &$arr = array()) {
-						$array_fields = array('author__in','author__not_in','category__and','category__in','category__not_in','tag__and','tag__in','tag__not_in','tag_slug__and','tag_slug__in','tax_query','post_parent__in','post_parent__not_in','post__in','post__not_in','post_name__in','date_query','meta_query');
-						if (in_array($key, $array_fields)) {
+						$array_fields = array('author__in','author__not_in','category__and','category__in','category__not_in','tag__and','tag__in','tag__not_in','tag_slug__and','tag_slug__in','post_parent__in','post_parent__not_in','post__in','post__not_in','post_name__in','query');
+						$query_fields = array('tax_query','meta_query','date_query');
+						if (in_array($key, $array_fields) || in_array($key, $query_fields)) {
 							$arr[$key] = $this->make_array($value);
+							if (!empty(array_filter($arr[$key]))) {
+								// further parsing?
+								$count_equals = 0;
+								foreach ($arr[$key] as $v) {
+									$pos = strpos($v, "=");
+									if ($pos !== false && $pos >= 1) {
+										$count_equals++;
+									}
+								}
+								if ($count_equals == count($arr[$key])) {
+									$arr_new = array();
+									foreach ($arr[$key] as $v) {
+										$arr_new = array_merge($arr_new, wp_parse_args($v));
+									}
+									if ($key == 'query') {
+										unset($arr[$key]);
+										$arr = array_merge($arr, $arr_new);
+									}
+									else {
+										$arr[$key] = $arr_new;
+									}
+								}
+								if (in_array($key, $query_fields)) {
+									$arr[$key] = array($arr[$key]);
+								}
+							}
 						}
 						else {
 							$arr[$key] = $value;
@@ -1892,11 +2414,27 @@ final class Copy_Content extends Halftheory_Helper_Plugin {
 						}
 						return $arr;
 					};
-
+					// save user input
 					foreach ($tags as $key => $value) {
-						unset($atts[$key]);
 						if (is_numeric($key) && is_string($value)) {
 							$atts['query_user'][$value] = true;
+						}
+						elseif (is_numeric($key)) {
+							continue;
+						}
+						else {
+							$atts['query_user'][$key] = $value;
+						}
+					}
+					// resolve 'query' key first
+					if (array_key_exists('query', $tags)) {
+						$func_array('query',$tags['query'],$tags);
+					}
+					foreach ($tags as $key => $value) {
+						if (array_key_exists($key, $atts)) {
+							unset($atts[$key]);
+						}
+						if (is_numeric($key) && is_string($value)) {
 							$func_replace($value);
 							$atts['query'][$value] = true;
 							$func_extra($value,$atts['query']);
@@ -1905,7 +2443,6 @@ final class Copy_Content extends Halftheory_Helper_Plugin {
 							continue;
 						}
 						else {
-							$atts['query_user'][$key] = $value;
 							$func_replace($key);
 							$func_array($key,$value,$atts['query']);
 							$func_extra($key,$atts['query']);
@@ -1926,7 +2463,7 @@ final class Copy_Content extends Halftheory_Helper_Plugin {
 				}
 			}
 		}
-		$atts = array_filter($atts);
+		$atts = array_filter($atts, function($v) { return !$this->empty_notzero($v); });
 		return $atts;
 	}
 
@@ -1954,6 +2491,9 @@ final class Copy_Content extends Halftheory_Helper_Plugin {
 	}
 
 	private function selector_to_xpath($value) {
+		if (is_array($value)) { // TODO: remove this
+			$value = current($value);
+		}
 		// e.g. div#myID/comment, span.myClass, #myID2
 		$comment = false;
 		if (strpos($value, "/comment") !== false) {
@@ -1983,7 +2523,7 @@ final class Copy_Content extends Halftheory_Helper_Plugin {
 			}
 		}
 		if ($comment) {
-			$value = $value.'/comment()'; // this must be single quotes! todo: iconv
+			$value = $value.'/comment()'; // this must be single quotes! TODO: iconv
 		}
 		return $value;
 	}
@@ -2045,6 +2585,49 @@ final class Copy_Content extends Halftheory_Helper_Plugin {
 		return $str;
 	}
 
+	public function set_transient_html($transient = '', $value, $expiration = 0) {
+		// remove html we don't need, as long as there is no url reference.
+		$remove_tags = array(
+			'code',
+			'pre',
+			'script',
+		);
+		$links = $this->get_attributes_for_urls();
+		$func = function($v) {
+			return "(?!".$v."=[\"'])";
+		};
+		$links = array_map($func, $links);
+		foreach ($remove_tags as $tag) {
+			// has closing tag
+			$value = preg_replace("/<".$tag.">.*?<\/".$tag.">/is", "", $value);
+			$value = preg_replace("/<".$tag." ".implode("", $links)."[^>]*>.*?<\/".$tag.">/is", "", $value); // not perfect, because assumes that the url attribute is first.
+			// no closing tag
+			$value = preg_replace("/<".$tag."[ ]*\/>/is", "", $value);
+			$value = preg_replace("/<".$tag." ".implode("", $links)."[^>]*\/>/is", "", $value);
+		}
+		if ($this->set_transient($transient, $value, $expiration)) {
+			return $value;
+		}
+		// some html causes set_transient to break. remove html tags until it works.
+		$remove_tags = array(
+			'dom-module',
+			'template',
+			'iron-iconset-svg',
+			'svg',
+			'style',
+			'script',
+		);
+		foreach ($remove_tags as $tag) {
+			$value = preg_replace("/<".$tag."[^>]*>.*?<\/".$tag.">/is", "", $value);
+			$value = preg_replace("/<[\/]?".$tag."[^>]*>/is", "", $value);
+			$value = $this->trim_excess_space($value);
+			if ($this->set_transient($transient, $value, $expiration)) {
+				return $value;
+			}
+		}
+		return false;
+	}
+
 	/* functions - arrays */
 
     private function get_options_array() {
@@ -2053,43 +2636,55 @@ final class Copy_Content extends Halftheory_Helper_Plugin {
 			// copy-content
 			'copycontent_update_excerpt', // update_excerpt overwrite in shortcode
 			'copycontent_update_thumbnail', // update_thumbnail overwrite in shortcode
+			'copycontent_update_post_frontend',
 			'copycontent_shortcode_defaults', // string
 			'copycontent_file_handling', // keep, remove, download
 			'copycontent_file_exists', // discard, replace, new
 			// wp-copy-content
 			'wpcopycontent_update_excerpt',
 			'wpcopycontent_update_thumbnail',
+			'wpcopycontent_update_post_frontend',
 			'wpcopycontent_shortcode_defaults',
 			'wpcopycontent_file_handling',
 			'wpcopycontent_file_exists',
 		);
     }
 
-    private function get_shortcode_defaults($shortcode = 'copy-content') {
+    private function get_shortcode_defaults($shortcode = 'copy-content', $context = 'system') {
 		$defaults = array(
 			'url' => '',
+			'refresh_time' => 0, // number or string, 0 = forever
+			'force_refresh' => false,
+			'update_excerpt' => false,
+			'excerpt' => '',
+			'update_thumbnail' => false,
+			'thumbnail' => '',
 			'include' => 'body',
 			'exclude' => '',
-			'refresh' => 0, // number or string, 0 = forever
-			'update_excerpt' => false,
-			'update_thumbnail' => false,
-			'force-update' => false,
-			'force-refresh' => false,
+			'wpautop' => false,
 		);
 		if ($shortcode == $this->shortcode_wpcopycontent) {
 			$defaults = array(
-				'include' => '',
-				'exclude' => '',
-				'refresh' => 0, // number or string, 0 = forever
+				'refresh_time' => 0, // number or string, 0 = forever
+				'force_refresh' => false,
 				'update_excerpt' => false,
 				'update_thumbnail' => false,
-				'force-update' => false,
-				'force-refresh' => false,
+				'include' => '',
+				'exclude' => '',
+				'wpautop' => true,
 			);
 			if (is_multisite()) {
 				$defaults = array_merge( array('blog_id' => get_current_blog_id()), $defaults );
 			}
 		}
+
+		if ($context == 'user') {
+			$defaults['update_excerpt'] = $this->get_option(static::$prefix, $this->option_prefix[$shortcode].'_update_excerpt', false);
+			$defaults['update_thumbnail'] = $this->get_option(static::$prefix, $this->option_prefix[$shortcode].'_update_thumbnail', false);
+			$defaults_user = $this->make_array(shortcode_parse_atts($this->get_option(static::$prefix, $this->option_prefix[$shortcode].'_shortcode_defaults', '')));
+			$defaults = wp_parse_args($defaults_user, $defaults);
+		}
+
 		return $defaults;
 	}
 
@@ -2111,7 +2706,7 @@ final class Copy_Content extends Halftheory_Helper_Plugin {
     	return $options;
     }
 
-    private function get_file_types() {
+    public static function get_file_types() {
     	// https://developer.mozilla.org/en-US/docs/Web/HTTP/Basics_of_HTTP/MIME_types/Complete_list_of_MIME_types
     	$file_types = array(
 			'image' => array(
@@ -2151,6 +2746,24 @@ final class Copy_Content extends Halftheory_Helper_Plugin {
 			),
     	);
     	return apply_filters('copycontent_file_types', $file_types);
+    }
+
+    private function is_valid_file($filename = '', $file_type = 'image') {
+    	$res = $filename;
+
+		$file_types = self::get_file_types();
+		if (isset($file_types[$file_type])) {
+			if (!in_array(strtolower(pathinfo($filename, PATHINFO_EXTENSION)), $file_types[$file_type]['extensions'])) {
+				$res = false;	
+			}
+		}
+
+    	if ($file_type == 'image') {
+    		if (preg_match("/^(blank|spacer|[0-9]+)\.gif$/i", basename($filename))) {
+    			$res = false;
+    		}
+    	}
+    	return apply_filters('copycontent_is_valid_file', $res, $filename, $file_type);
     }
 
 	private function get_attributes_for_urls() {
@@ -2200,7 +2813,74 @@ final class Copy_Content extends Halftheory_Helper_Plugin {
 		return array('class' => $class, 'message' => $message);
 	}
 
+	public static function register_post_type($post_type, $args = null) {
+		$res = post_type_exists($post_type);
+		if (!$res) {
+			if (is_null($args)) {
+				$args = array(
+					'public' => true,
+					'show_ui' => false,
+					'show_in_nav_menus' => false,
+					'show_in_rest' => false,
+					'hierarchical' => true,
+					'query_var' => false,
+					'rewrite' => array('slug' => rtrim($post_type,'s').'s'),
+				);
+			}
+			else {
+				$plugin = new static(static::$plugin_basename, static::$prefix, false);
+				$args = $plugin->make_array($args);
+			}
+			$args = apply_filters('copycontent_register_post_type', $args, $post_type);
+			$res = register_post_type($post_type, $args);
+		}
+		return $res;
+	}
+
+	public static function register_taxonomy($taxonomy, $object_type = null, $args = null) {
+		$res = taxonomy_exists($taxonomy);
+		if (!$res) {
+			if (is_null($object_type)) {
+        		$object_type = get_post_types(array('public'=>true),'names');
+			}
+			if (is_null($args)) {
+				$args = array(
+					'description' => $taxonomy,
+					'public' => true,
+					'show_ui' => false,
+					'show_in_nav_menus' => false,
+					'show_in_rest' => false,
+					'hierarchical' => true,
+					'query_var' => false,
+					'rewrite' => false,
+				);
+			}
+			else {
+				$plugin = new static(static::$plugin_basename, static::$prefix, false);
+				$args = $plugin->make_array($args);
+			}
+			$args = apply_filters('copycontent_register_taxonomy', $args, $taxonomy, $object_type);
+			$res = register_taxonomy($taxonomy, $object_type, $args);
+		}
+		return $res;
+	}
+
 	/* functions-common */
+
+	private function get_filter_next_priority($tag, $priority_start = 10) {
+		if (function_exists(__FUNCTION__)) {
+			$func = __FUNCTION__;
+			return $func($tag, $priority_start);
+		}
+		global $wp_filter;
+		$i = $priority_start;
+		if (isset($wp_filter[$tag])) {
+			while ($wp_filter[$tag]->offsetExists($i) === true) {
+				$i++;
+			}
+		}
+		return $i;
+	}
 
 	private function url_exists($url = '') {
 		if (function_exists(__FUNCTION__)) {
