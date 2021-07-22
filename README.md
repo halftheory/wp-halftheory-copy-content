@@ -17,7 +17,6 @@ Features:
 # [copy-content] arguments
 
 - url (http://...)
-- refresh_time (int seconds "86400" or string "1 day")
 - force_refresh (true/false)
 - update_excerpt (true/false)
 - excerpt (list of tag selectors)
@@ -32,9 +31,9 @@ Features:
 
 [copy-content url=http://wikipedia.org/ include=.central-textlogo,div.central-featured exclude=div.central-featured-logo-wrapper force_refresh=true]
 
-[copy-content url=http://gli.tc/h/transistor.html include=#mainContent exclude=#container4 refresh_time="1 day" img=* h2=class,style div=false force_refresh=1]
+[copy-content url=http://gli.tc/h/transistor.html include=#mainContent exclude=#container4 img=* h2=class,style div=false]
 
-[copy-content url=https://www.facebook.com/events/1590947440934598 include=code#u_0_g/comment exclude=._4x0d refresh_time="2 years" div=* code=* span=*]
+[copy-content url=https://www.facebook.com/events/1590947440934598 include=code#u_0_g/comment exclude=._4x0d div=* code=* span=*]
 
 [copy-content url=https://www.residentadvisor.net/events/962231 include=#event-item exclude=.ptb8]
 
@@ -42,13 +41,12 @@ Features:
 
 - blog_id (multisite)
 - query (WP_Query arguments)
-- refresh_time (int seconds "86400" or string "1 day")
-- force_refresh (true/false)
 - update_excerpt (true/false)
 - update_thumbnail (true/false)
 - include (list of tag selectors)
 - exclude (list of tag selectors)
 - wpautop (true/false)
+- pagination (true/false)
 - any WP_Query argument (posts, taxonomies, search, etc.)
 
 # [wp-copy-content] examples
@@ -59,7 +57,7 @@ Features:
 
 [wp-copy-content category_name=news]
 
-[wp-copy-content blog_id=3 category_name=news paged=2 update_thumbnail=0]
+[wp-copy-content blog_id=3 category_name=news paged=2 update_thumbnail=false]
 
 # Custom filters
 
@@ -70,10 +68,7 @@ The following filters are available for plugin/theme customization:
 - copycontent_uninstall
 - copycontent_file_types
 - copycontent_is_valid_file
-- copycontent_register_post_type
-- copycontent_register_taxonomy
 - copycontent_shortcode
-- copycontent_get_content
-- wpcopycontent_get_content
 - wpcopycontent_query
 - wpcopycontent_template
+- wpcopycontent_pagination_args
