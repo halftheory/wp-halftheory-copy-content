@@ -998,20 +998,7 @@ if ( ! class_exists('Halftheory_Copy_Content', false) && class_exists('Halftheor
 
         /* functions - wp-copy-content */
 
-        public function wpcopycontent_get_content( $atts = array(), $post_id = 0 ) {
-            // does blog exist?
-            $switch_blog = false;
-            if ( is_multisite() && isset($atts['blog_id']) ) {
-                if ( get_current_blog_id() !== $atts['blog_id'] ) {
-                    $count = get_sites(array( 'count' => true, 'site__in' => array( $atts['blog_id'] ) ));
-                    if ( $count === 0 ) {
-                        return false;
-                    }
-                    $switch_blog = true;
-                }
-            }
-
-            // query_args.
+        public function wpcopycontent_query_args( $atts = array(), $post_id = 0, $switch_blog = false ) {
             $query_args = array();
             // data formatting.
             $func_make_query_args = function ( $arr ) {
@@ -1139,15 +1126,34 @@ if ( ! class_exists('Halftheory_Copy_Content', false) && class_exists('Halftheor
                     $query_args['ignore_sticky_posts'] = true;
                 }
             }
+
+            return apply_filters('wpcopycontent_query', $query_args, $atts);
+        }
+
+        public function wpcopycontent_get_content( $atts = array(), $post_id = 0 ) {
+            // does blog exist?
+            $switch_blog = false;
+            if ( is_multisite() && isset($atts['blog_id']) ) {
+                if ( get_current_blog_id() !== $atts['blog_id'] ) {
+                    $count = get_sites(array( 'count' => true, 'site__in' => array( $atts['blog_id'] ) ));
+                    if ( $count === 0 ) {
+                        return false;
+                    }
+                    $switch_blog = true;
+                }
+            }
+
+            // query_args.
+            $query_args = $this->wpcopycontent_query_args($atts, $post_id, $switch_blog);
             // sorry, nothing worked.
             if ( empty($query_args) ) {
                 return false;
             }
+
             if ( $switch_blog ) {
                 switch_to_blog($atts['blog_id']);
                 $query_args = $this->check_wp_query_args($query_args);
             }
-            $query_args = apply_filters('wpcopycontent_query', $query_args, $atts);
 
             $res = array( 'content' => '' );
 
@@ -1228,9 +1234,11 @@ if ( ! class_exists('Halftheory_Copy_Content', false) && class_exists('Halftheor
             } else {
                 wp_reset_postdata();
             }
+
             if ( $switch_blog ) {
                 restore_current_blog();
             }
+
             $res['content'] = apply_filters('wpcopycontent_content_filters_active', $res['content'], null, $atts);
 
             // sorry, nothing worked.
@@ -1912,7 +1920,7 @@ if ( ! class_exists('Halftheory_Copy_Content', false) && class_exists('Halftheor
             );
         }
 
-        private function get_shortcode_atts_context( $shortcode = 'copy-content', $context = 'db', $input = array(), $key = null, $default = null ) {
+        public function get_shortcode_atts_context( $shortcode = 'copy-content', $context = 'db', $input = array(), $key = null, $default = null ) {
             $atts_default = array();
             if ( $shortcode === $this->shortcode_copycontent ) {
                 $atts_default = array(
