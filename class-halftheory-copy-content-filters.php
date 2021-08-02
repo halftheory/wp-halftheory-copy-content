@@ -301,7 +301,7 @@ if ( ! class_exists('Halftheory_Copy_Content_Filters', false) ) :
             if ( empty($content) ) {
                 return $content;
             }
-            $content = preg_replace("/[\s]*<br[\/ ]*>[\s]*/is", "\n", $content);
+            $content = preg_replace('/[\s]*<br[\/ ]*>[\s]*/is', "\n", $content);
             if ( function_exists('force_balance_tags') ) {
                 $content = force_balance_tags($content);
             }

@@ -2206,18 +2206,22 @@ if ( ! class_exists('Halftheory_Copy_Content', false) && class_exists('Halftheor
 
             if ( strpos($str, '</') !== false ) {
                 // no space before closing tags.
-                $str = preg_replace("/[\t\n\r ]*(<\/[^>]+>)/s", '$1', $str);
+                $str = preg_replace('/[\s]*(<\/[^>]+>)/s', '$1', $str);
             }
             if ( strpos($str, '<br') !== false ) {
                 // no br at start/end.
-                $str = preg_replace("/^<br[\/ ]*>/s", '', $str);
-                $str = preg_replace("/<br[\/ ]*>$/s", '', $str);
+                $str = preg_replace('/^<br[\/ ]*>/is', '', $str);
+                $str = preg_replace('/<br[\/ ]*>$/is', '', $str);
+                // limit to max 2 brs.
+                $str = preg_replace('/(<br[\/ ]*>[\s]*){3,}/is', '$1$1', $str);
+                // no br directly next to p tags.
+                $str = preg_replace('/(<p>|<p [^>]+>)[\s]*<br[\/ ]*>[\s]*/is', '$1', $str);
+                $str = preg_replace('/[\s]*<br[\/ ]*>[\s]*(<\/p>)/is', '$1', $str);
             }
 
             $str = preg_replace("/[\t ]*(\n|\r)[\t ]*/s", '$1', $str);
-            $str = preg_replace("/(\n\r){3,}/s", '$1$1', $str);
-            $str = preg_replace("/[\n]{3,}/s", "\n\n", $str);
-            $str = preg_replace("/[ ]{2,}/s", ' ', $str);
+            $str = preg_replace("/(\n|\r){3,}/s", "\n\n", $str);
+            $str = preg_replace('/[ ]{2,}/s', ' ', $str);
             return trim($str);
         }
 
