@@ -1196,10 +1196,11 @@ if ( ! class_exists('Halftheory_Copy_Content', false) && class_exists('Halftheor
                                 if ( empty($template) ) {
                                     $template = $this->get_template();
                                 }
-                                if ( $template ) {
+                                if ( empty($template) ) {
+                                    $template = locate_template(array( 'index.php' ), false);
+                                }
+                                if ( ! empty($template) && file_exists($template) ) {
                                     load_template($template, false);
-                                } else {
-                                    load_template(get_stylesheet_directory() . '/index.php', false);
                                 }
                                 // excerpt.
                                 if ( $atts['update_excerpt'] && ! isset($res['excerpt']) && ! $this->empty_notzero($post->post_excerpt) ) {
