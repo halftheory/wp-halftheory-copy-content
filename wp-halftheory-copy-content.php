@@ -2118,15 +2118,6 @@ if ( ! class_exists('Halftheory_Copy_Content', false) && class_exists('Halftheor
             return apply_filters('esc_textarea', $safe_text, $text);
         }
 
-        private function trim_quotes( $str ) {
-            if ( is_string($str) ) {
-                $str = trim($str, " '" . '"');
-            } elseif ( is_array($str) ) {
-                $str = array_map(array( $this, __FUNCTION__ ), $str);
-            }
-            return $str;
-        }
-
         private function admin_notice_add( $class = 'updated', $message = '' ) {
             if ( ! isset($this->admin_notices) ) {
                 $this->admin_notices = array();
@@ -2159,91 +2150,6 @@ if ( ! class_exists('Halftheory_Copy_Content', false) && class_exists('Halftheor
                 }
             }
             return $i;
-        }
-
-        private function url_exists( $url = '' ) {
-            if ( function_exists(__FUNCTION__) ) {
-                $func = __FUNCTION__;
-                return $func($url);
-            }
-            if ( empty($url) ) {
-                return false;
-            }
-            $url_check = @get_headers($url);
-            if ( ! is_array($url_check) || strpos($url_check[0], '404') !== false ) {
-                return false;
-            }
-            return true;
-        }
-
-        private function fix_potential_html_string( $str = '' ) {
-            if ( function_exists(__FUNCTION__) ) {
-                $func = __FUNCTION__;
-                return $func($str);
-            }
-            if ( empty($str) ) {
-                return $str;
-            }
-            if ( strpos($str, '&lt;') !== false ) {
-                if ( substr_count($str, '&lt;') > substr_count($str, '<') || preg_match("/&lt;\/[\w]+&gt;/is", $str) ) {
-                    $str = html_entity_decode($str, ENT_NOQUOTES, 'UTF-8');
-                }
-            } elseif ( strpos($str, '&#039;') !== false ) {
-                $str = html_entity_decode($str, ENT_QUOTES, 'UTF-8');
-            }
-            return $str;
-        }
-
-        public function trim_excess_space( $str = '' ) {
-            if ( function_exists(__FUNCTION__) ) {
-                $func = __FUNCTION__;
-                return $func($str);
-            }
-            if ( empty($str) ) {
-                return $str;
-            }
-            $replace_with_space = array( '&nbsp;', '&#160;', "\xc2\xa0" );
-            $str = str_replace($replace_with_space, ' ', $str);
-
-            if ( strpos($str, '</') !== false ) {
-                // no space before closing tags.
-                $str = preg_replace('/[\s]*(<\/[^>]+>)/s', '$1', $str);
-            }
-            if ( strpos($str, '<br') !== false ) {
-                // no br at start/end.
-                $str = preg_replace('/^<br[\/ ]*>/is', '', $str);
-                $str = preg_replace('/<br[\/ ]*>$/is', '', $str);
-                // limit to max 2 brs.
-                $str = preg_replace('/(<br[\/ ]*>[\s]*){3,}/is', '$1$1', $str);
-                // no br directly next to p tags.
-                $str = preg_replace('/(<p>|<p [^>]+>)[\s]*<br[\/ ]*>[\s]*/is', '$1', $str);
-                $str = preg_replace('/[\s]*<br[\/ ]*>[\s]*(<\/p>)/is', '$1', $str);
-            }
-
-            $str = preg_replace("/[\t ]*(\n|\r)[\t ]*/s", '$1', $str);
-            $str = preg_replace("/(\n|\r){3,}/s", "\n\n", $str);
-            $str = preg_replace('/[ ]{2,}/s', ' ', $str);
-            return trim($str);
-        }
-
-        public function strip_single_tag( $str = '', $tag = '' ) {
-            if ( function_exists(__FUNCTION__) ) {
-                $func = __FUNCTION__;
-                return $func($str, $tag);
-            }
-            if ( empty($tag) ) {
-                return $str;
-            }
-            if ( strpos($str, '<' . $tag) === false ) {
-                return $str;
-            }
-            // has closing tag.
-            $str = preg_replace("/[\s]*<$tag [^>]*>.*?<\/[ ]*$tag>[\s]*/is", '', $str);
-            $str = preg_replace("/[\s]*<$tag>.*?<\/[ ]*$tag>[\s]*/is", '', $str);
-            // no closing tag.
-            $str = preg_replace("/[\s]*<$tag [^>]+>[\s]*/is", '', $str);
-            $str = preg_replace("/[\s]*<" . $tag . "[ \/]*>[\s]*/is", '', $str);
-            return $str;
         }
 
         private function file_get_contents_extended( $filename = '' ) {
@@ -2313,6 +2219,104 @@ if ( ! class_exists('Halftheory_Copy_Content', false) && class_exists('Halftheor
                 return false;
             }
             return $str;
+        }
+
+        private function fix_potential_html_string( $str = '' ) {
+            if ( function_exists(__FUNCTION__) ) {
+                $func = __FUNCTION__;
+                return $func($str);
+            }
+            if ( empty($str) ) {
+                return $str;
+            }
+            if ( strpos($str, '&lt;') !== false ) {
+                if ( substr_count($str, '&lt;') > substr_count($str, '<') || preg_match("/&lt;\/[\w]+&gt;/is", $str) ) {
+                    $str = html_entity_decode($str, ENT_NOQUOTES, 'UTF-8');
+                }
+            } elseif ( strpos($str, '&#039;') !== false ) {
+                $str = html_entity_decode($str, ENT_QUOTES, 'UTF-8');
+            }
+            return $str;
+        }
+
+        public function strip_single_tag( $str = '', $tag = '' ) {
+            if ( function_exists(__FUNCTION__) ) {
+                $func = __FUNCTION__;
+                return $func($str, $tag);
+            }
+            if ( empty($tag) ) {
+                return $str;
+            }
+            if ( strpos($str, '<' . $tag) === false ) {
+                return $str;
+            }
+            // has closing tag.
+            $str = preg_replace("/[\s]*<$tag [^>]*>.*?<\/[ ]*$tag>[\s]*/is", '', $str);
+            $str = preg_replace("/[\s]*<$tag>.*?<\/[ ]*$tag>[\s]*/is", '', $str);
+            // no closing tag.
+            $str = preg_replace("/[\s]*<$tag [^>]+>[\s]*/is", '', $str);
+            $str = preg_replace("/[\s]*<" . $tag . "[ \/]*>[\s]*/is", '', $str);
+            return $str;
+        }
+
+        public function trim_excess_space( $str = '' ) {
+            if ( function_exists(__FUNCTION__) ) {
+                $func = __FUNCTION__;
+                return $func($str);
+            }
+            if ( empty($str) ) {
+                return $str;
+            }
+            $replace_with_space = array( '&nbsp;', '&#160;', "\xc2\xa0" );
+            $str = str_replace($replace_with_space, ' ', $str);
+
+            if ( strpos($str, '</') !== false ) {
+                // no space before closing tags.
+                $str = preg_replace('/[\s]*(<\/[^>]+>)/s', '$1', $str);
+            }
+            if ( strpos($str, '<br') !== false ) {
+                // no br at start/end.
+                $str = preg_replace('/^<br[\/ ]*>/is', '', $str);
+                $str = preg_replace('/<br[\/ ]*>$/is', '', $str);
+                // limit to max 2 brs.
+                $str = preg_replace('/(<br[\/ ]*>[\s]*){3,}/is', '$1$1', $str);
+                // no br directly next to p tags.
+                $str = preg_replace('/(<p>|<p [^>]+>)[\s]*<br[\/ ]*>[\s]*/is', '$1', $str);
+                $str = preg_replace('/[\s]*<br[\/ ]*>[\s]*(<\/p>)/is', '$1', $str);
+            }
+
+            $str = preg_replace("/[\t ]*(\n|\r)[\t ]*/s", '$1', $str);
+            $str = preg_replace("/(\n|\r){3,}/s", "\n\n", $str);
+            $str = preg_replace('/[ ]{2,}/s', ' ', $str);
+            return trim($str);
+        }
+
+        public function trim_quotes( $str = '' ) {
+            if ( function_exists(__FUNCTION__) ) {
+                $func = __FUNCTION__;
+                return $func($str);
+            }
+            if ( is_string($str) ) {
+                $str = trim($str, " \n\r\t\v\0'" . '"');
+            } elseif ( is_array($str) ) {
+                $str = array_map(array( $this, __FUNCTION__ ), $str);
+            }
+            return $str;
+        }
+
+        private function url_exists( $url = '' ) {
+            if ( function_exists(__FUNCTION__) ) {
+                $func = __FUNCTION__;
+                return $func($url);
+            }
+            if ( empty($url) ) {
+                return false;
+            }
+            $url_check = @get_headers($url);
+            if ( ! is_array($url_check) || strpos($url_check[0], '404') !== false ) {
+                return false;
+            }
+            return true;
         }
     }
 
