@@ -1108,8 +1108,8 @@ if ( ! class_exists('Halftheory_Copy_Content', false) && class_exists('Halftheor
             // pagination.
             if ( $atts['pagination'] ) {
                 if ( is_paged() ) {
-                    global $paged;
-                    $query_args['paged'] = $paged;
+                    global $paged, $page;
+                    $query_args['paged'] = ! empty($paged) ? $paged : $page;
                 }
             } else {
                 $is_paged = false;
@@ -2111,13 +2111,6 @@ if ( ! class_exists('Halftheory_Copy_Content', false) && class_exists('Halftheor
 
         /* functions - misc */
 
-        public function esc_textarea_substitute( $text ) {
-            // https://developer.wordpress.org/reference/functions/esc_textarea/
-            // if flags is only 'ENT_QUOTES' strings with special characters like ascii art will return empty.
-            $safe_text = htmlspecialchars($text, ENT_QUOTES | ENT_SUBSTITUTE, $this->get_option('blog_charset', null, 'UTF-8'));
-            return apply_filters('esc_textarea', $safe_text, $text);
-        }
-
         private function admin_notice_add( $class = 'updated', $message = '' ) {
             if ( ! isset($this->admin_notices) ) {
                 $this->admin_notices = array();
@@ -2136,6 +2129,17 @@ if ( ! class_exists('Halftheory_Copy_Content', false) && class_exists('Halftheor
         }
 
         /* functions-common */
+
+        public function esc_textarea_substitute( $text ) {
+            if ( function_exists(__FUNCTION__) ) {
+                $func = __FUNCTION__;
+                return $func($text);
+            }
+            // https://developer.wordpress.org/reference/functions/esc_textarea/
+            // if flags is only 'ENT_QUOTES' strings with special characters like ascii art will return empty.
+            $safe_text = htmlspecialchars($text, ENT_QUOTES | ENT_SUBSTITUTE, $this->get_option('blog_charset', null, 'UTF-8'));
+            return apply_filters('esc_textarea', $safe_text, $text);
+        }
 
         private function get_filter_next_priority( $tag, $priority_start = 10 ) {
             if ( function_exists(__FUNCTION__) ) {
