@@ -48,7 +48,7 @@ if ( ! class_exists('Halftheory_Copy_Content_Filters', false) ) :
             if ( strpos($url, 'http') === false ) {
                 return $content;
             }
-            if ( class_exists('Halftheory_Copy_Content', false) ) {
+            if ( method_exists('Halftheory_Copy_Content', 'get_attributes_for_urls') ) {
                 $links = Halftheory_Copy_Content::get_instance()->get_attributes_for_urls();
             } else {
                 $links = array(
@@ -140,18 +140,19 @@ if ( ! class_exists('Halftheory_Copy_Content_Filters', false) ) :
             if ( empty($content) ) {
                 return $content;
             }
-            if ( ! class_exists('Halftheory_Copy_Content', false) ) {
-                return $content;
-            }
-            $tags = array(
-                'code',
-                'noscript',
-                'pre',
-                'script',
-                'style',
-            );
-            foreach ( $tags as $tag ) {
-                $content = Halftheory_Copy_Content::get_instance()->strip_single_tag($content, $tag);
+            if ( method_exists('Halftheory_Copy_Content', 'strip_single_tag') ) {
+                $tags = array(
+                    'code',
+                    'noscript',
+                    'pre',
+                    'script',
+                    'style',
+                );
+                foreach ( $tags as $tag ) {
+                    if ( ! array_key_exists($tag, $atts) && ! in_array($tag, $atts, true) ) {
+                        $content = Halftheory_Copy_Content::get_instance()->strip_single_tag($content, $tag);
+                    }
+                }
             }
             return $content;
         }
@@ -262,7 +263,7 @@ if ( ! class_exists('Halftheory_Copy_Content_Filters', false) ) :
             if ( empty($content) ) {
                 return $content;
             }
-            if ( ! class_exists('Halftheory_Copy_Content', false) || ! function_exists('wp_extract_urls') || ! function_exists('wp_specialchars_decode') ) {
+            if ( ! method_exists('Halftheory_Copy_Content', 'is_valid_file') || ! function_exists('wp_extract_urls') || ! function_exists('wp_specialchars_decode') ) {
                 return $content;
             }
             if ( strpos($content, '<img ') === false && strpos($content, 'lazy') === false ) {
@@ -305,7 +306,7 @@ if ( ! class_exists('Halftheory_Copy_Content_Filters', false) ) :
             if ( function_exists('force_balance_tags') ) {
                 $content = force_balance_tags($content);
             }
-            if ( class_exists('Halftheory_Copy_Content', false) ) {
+            if ( method_exists('Halftheory_Copy_Content', 'trim_excess_space') ) {
                 $content = Halftheory_Copy_Content::get_instance()->trim_excess_space($content);
             } else {
                 $content = trim($content);

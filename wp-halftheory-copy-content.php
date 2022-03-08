@@ -1566,6 +1566,7 @@ if ( ! class_exists('Halftheory_Copy_Content', false) && class_exists('Halftheor
                 'template',
                 'iron-iconset-svg',
                 'svg',
+                'path',
                 'style',
                 'script',
             );
