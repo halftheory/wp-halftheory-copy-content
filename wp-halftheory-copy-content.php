@@ -668,14 +668,14 @@ if ( ! class_exists('Halftheory_Copy_Content', false) && class_exists('Halftheor
                             if ( empty($res) || is_wp_error($res) ) {
                                 $this->admin_notice_add('error', __('Error: Post update failed.'));
                             } else {
-                                $this->admin_notice_add('updated', __('Success: Post shortcode updated.'));
+                                $this->admin_notice_add('success', __('Success: Post shortcode updated.'));
                             }
                             if ( $fields_old['thumbnail'] !== $fields_new['thumbnail'] ) {
                                 $res = set_post_thumbnail($post_id, $fields_new['thumbnail']);
                                 if ( ! $res ) {
                                     $this->admin_notice_add('error', __('Error: Thumbnail update failed.'));
                                 } else {
-                                    $this->admin_notice_add('updated', __('Success: Thumbnail updated.'));
+                                    $this->admin_notice_add('success', __('Success: Thumbnail updated.'));
                                 }
                             }
                         }
@@ -695,12 +695,7 @@ if ( ! class_exists('Halftheory_Copy_Content', false) && class_exists('Halftheor
                 return;
             }
             if ( $current_screen->base === 'post' && $current_screen->parent_base === 'edit' ) {
-                if ( $arr = $this->get_transient(static::$prefix . '_admin_notices') ) {
-                    $this->delete_transient(static::$prefix . '_admin_notices');
-                    foreach ( $arr as $value ) {
-                        echo '<div class="' . esc_attr($value['class']) . '"><p>' . esc_html($value['message']) . '</p></div>' . "\n";
-                    }
-                }
+                parent::admin_notices();
             }
         }
 
@@ -2108,25 +2103,6 @@ if ( ! class_exists('Halftheory_Copy_Content', false) && class_exists('Halftheor
                     break;
             }
             return $res;
-        }
-
-        /* functions - misc */
-
-        private function admin_notice_add( $class = 'updated', $message = '' ) {
-            if ( ! isset($this->admin_notices) ) {
-                $this->admin_notices = array();
-            }
-            $this->admin_notices[] = array('class' => $class, 'message' => $message);
-        }
-
-        private function admin_notices_set() {
-            if ( isset($this->admin_notices) ) {
-                if ( ! empty($this->admin_notices) ) {
-                    $this->set_transient(static::$prefix . '_admin_notices', $this->admin_notices, '1 hour');
-                    return;
-                }
-            }
-            $this->delete_transient(static::$prefix . '_admin_notices');
         }
 
         /* functions-common */
