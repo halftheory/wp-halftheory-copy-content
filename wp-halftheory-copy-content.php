@@ -695,7 +695,7 @@ if ( ! class_exists('Halftheory_Copy_Content', false) && class_exists('Halftheor
                 return;
             }
             if ( $current_screen->base === 'post' && $current_screen->parent_base === 'edit' ) {
-                parent::admin_notices();
+                #parent::admin_notices();
             }
         }
 
