@@ -3,6 +3,7 @@ if ( ! class_exists('WP_List_Table', false) && is_readable(ABSPATH . 'wp-admin/i
 	require_once ABSPATH . 'wp-admin/includes/class-wp-list-table.php';
 }
 if ( ! class_exists('Halftheory_Copy_Content_Table_Transients', false) ) :
+	#[AllowDynamicProperties]
 	final class Halftheory_Copy_Content_Table_Transients extends WP_List_Table {
 
 		public $prefix = '';
@@ -52,10 +53,10 @@ if ( ! class_exists('Halftheory_Copy_Content_Table_Transients', false) ) :
 				<input type="hidden" name="<?php echo esc_attr($this->prefix); ?>url_<?php echo esc_attr($item); ?>" id="<?php echo esc_attr($this->prefix); ?>url_<?php echo esc_attr($item); ?>" value="<?php echo esc_attr(current($arr)); ?>" />
 				<?php
                 $arr = array_map('make_clickable', $arr);
-                echo implode('<br />', $arr);
+                echo wp_kses_post(implode('<br />', $arr));
 			} else {
 				?>
-				<label for="cb-delete-<?php echo esc_attr($item); ?>"><?php echo '(' . esc_html__('Not found - ID: ') . str_replace($this->prefix, '', $item) . ')'; ?></label>
+				<label for="cb-delete-<?php echo esc_attr($item); ?>"><?php echo esc_html('(Not found - ID: ' . str_replace($this->prefix, '', $item) . ')'); ?></label>
 				<?php
 			}
 		}
@@ -77,7 +78,7 @@ if ( ! class_exists('Halftheory_Copy_Content_Table_Transients', false) ) :
                     },
                     $arr
                 );
-                echo implode('<br />', $arr);
+                echo wp_kses_post(implode('<br />', $arr));
 			} elseif ( class_exists('Halftheory_Copy_Content', false) ) {
 				if ( $v = Halftheory_Copy_Content::get_instance()->get_transient($item) ) {
 					if ( $t = Halftheory_Copy_Content::get_instance()->get_field_from_html('title', $v) ) {
@@ -131,7 +132,7 @@ if ( ! class_exists('Halftheory_Copy_Content_Table_Transients', false) ) :
 		public function print_column_headers( $with_id = true ) {
 			list( $columns, $hidden, $sortable, $primary ) = $this->get_column_info();
 
-			$current_url = set_url_scheme( 'http://' . $_SERVER['HTTP_HOST'] . $_SERVER['REQUEST_URI'] );
+			$current_url = set_url_scheme( 'http://' . wp_unslash($_SERVER['HTTP_HOST'] . $_SERVER['REQUEST_URI']) );
 			$current_url = remove_query_arg( 'paged', $current_url );
 
 			if ( isset( $_GET['orderby'] ) ) {
@@ -184,7 +185,7 @@ if ( ! class_exists('Halftheory_Copy_Content_Table_Transients', false) ) :
 						$class[] = 'desc' === $order ? 'asc' : 'desc';
 					}
 
-					$column_display_name = sprintf(
+					$column_display_name = wp_sprintf(
 						'<a href="%s"><span>%s</span><span class="sorting-indicator"></span></a>',
 						esc_url( add_query_arg( compact( 'orderby', 'order' ), $current_url ) ),
 						$column_display_name

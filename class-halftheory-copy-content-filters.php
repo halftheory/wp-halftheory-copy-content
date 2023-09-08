@@ -1,5 +1,6 @@
 <?php
 if ( ! class_exists('Halftheory_Copy_Content_Filters', false) ) :
+    #[AllowDynamicProperties]
 	class Halftheory_Copy_Content_Filters {
 
         public function __construct() {
