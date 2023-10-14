@@ -135,11 +135,7 @@ if ( ! class_exists('Halftheory_Copy_Content_Table_Transients', false) ) :
 			$current_url = set_url_scheme( 'http://' . wp_unslash($_SERVER['HTTP_HOST'] . $_SERVER['REQUEST_URI']) );
 			$current_url = remove_query_arg( 'paged', $current_url );
 
-			if ( isset( $_GET['orderby'] ) ) {
-				$current_orderby = $_GET['orderby'];
-			} else {
-				$current_orderby = '';
-			}
+			$current_orderby = isset( $_GET['orderby'] ) ? $_GET['orderby'] : '';
 
 			if ( isset( $_GET['order'] ) && 'desc' === $_GET['order'] ) {
 				$current_order = 'desc';
